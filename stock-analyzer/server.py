@@ -55,10 +55,14 @@ def fetch_cnbc_quote(sym: str) -> dict:
             "currency": q.get("currencyCode") or "USD",
             "regularMarketPrice": parse_num(q.get("last")),
             "previousClose": parse_num(q.get("previous_day_closing")),
+            "change": parse_num(q.get("change")),
+            "changePct": parse_num(q.get("change_pct")),
             "open": parse_num(q.get("open")),
             "dayHigh": parse_num(q.get("high")),
             "dayLow": parse_num(q.get("low")),
             "regularMarketVolume": parse_num(q.get("volume")),
+            "lastTime": q.get("last_time") or q.get("last_timedate") or "",
+            "realTime": q.get("real_time") or "true",
             "fiftyTwoWeekHigh": parse_num(q.get("yrhiprice")),
             "fiftyTwoWeekLow": parse_num(q.get("yrloprice")),
             "trailingPE": parse_num(q.get("pe")),
@@ -120,6 +124,50 @@ def build_chart_payload(sym: str, rng: str, intv: str) -> dict:
     bars = fetch_nasdaq_bars(sym, rng)
     if not bars:
         raise ValueError(f"No historical market data found for ticker '{sym.upper()}'")
+
+    # Merge or append live real-time session bar from CNBC when market is open / ahead of Nasdaq EOD table
+    live_price = meta.get("regularMarketPrice")
+    if live_price is not None and live_price > 0:
+        last_bar = bars[-1]
+        prev_close = meta.get("previousClose")
+        live_ts = None
+
+        # 1. Parse exact quote date from CNBC lastTime (e.g. "2026-11-06T11:16:00.000-0500")
+        m_dt = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(meta.get("lastTime") or ""))
+        if m_dt:
+            yr, mo, dy = map(int, m_dt.groups())
+            live_ts = int(datetime.datetime(yr, mo, dy, tzinfo=datetime.timezone.utc).timestamp())
+
+        # 2. Fallback: if last historical bar matches previousClose and price has moved, advance to next trading day
+        if (live_ts is None or live_ts <= last_bar["time"]) and prev_close is not None:
+            if abs(last_bar["close"] - prev_close) < 0.05 and abs(live_price - last_bar["close"]) >= 0.01:
+                next_dt = datetime.datetime.fromtimestamp(last_bar["time"], datetime.timezone.utc) + datetime.timedelta(days=1)
+                while next_dt.weekday() >= 5:
+                    next_dt += datetime.timedelta(days=1)
+                live_ts = int(next_dt.timestamp())
+
+        live_open = meta.get("open") or live_price
+        live_high = max(meta.get("dayHigh") or live_price, live_open, live_price)
+        live_low = min(meta.get("dayLow") or live_price, live_open, live_price)
+        live_vol = meta.get("regularMarketVolume") or last_bar["volume"]
+
+        if live_ts is not None and live_ts > last_bar["time"]:
+            bars.append({
+                "time": live_ts,
+                "open": live_open,
+                "high": live_high,
+                "low": live_low,
+                "close": live_price,
+                "volume": live_vol,
+            })
+        else:
+            last_bar["close"] = live_price
+            if meta.get("open"):
+                last_bar["open"] = meta["open"]
+            last_bar["high"] = max(last_bar["high"], live_high)
+            last_bar["low"] = min(last_bar["low"], live_low)
+            if meta.get("regularMarketVolume"):
+                last_bar["volume"] = meta["regularMarketVolume"]
 
     # If weekly interval requested (5Y), aggregate daily bars into weekly bars
     if intv == "1wk" and len(bars) > 60:

@@ -949,13 +949,13 @@ async function fetchYahooChartJSON(sym, range, interval) {
   const cacheKey = `${sym}_${range}_${interval}`;
   if (cache.has(cacheKey)) {
     const c = cache.get(cacheKey);
-    if (Date.now() - c.ts < 180000) return c.data;
+    if (Date.now() - c.ts < 5000) return c.data;
   }
 
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${interval}&range=${range}&events=div,split&includePrePost=false`;
 
   // 1. Try local Python StockSage server proxy first (http://127.0.0.1:8765 — Nasdaq + CNBC Live Feed)
-  const localUrl = `http://127.0.0.1:8765/api/chart?symbol=${encodeURIComponent(sym)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`;
+  const localUrl = `http://127.0.0.1:8765/api/chart?symbol=${encodeURIComponent(sym)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&_=${Date.now()}`;
   const strategies = [
     async () => {
       const r = await fetch(localUrl, { signal: AbortSignal.timeout(10000) });
@@ -2244,19 +2244,20 @@ function updateSidebar() {
   const { candles, meta, quant, computed, proposal, ticker } = S;
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2] || last;
-    // Use exact day change from CNBC quote metadata if on latest bar
-    const prevClose = meta.previousClose || prev.close;
-    const chg = last.close - prevClose;
-    const chgp = (chg / prevClose) * 100;
-    const up = chg >= 0;
+  // Use exact real-time price and day change from CNBC quote metadata
+  const spotPrice = meta.regularMarketPrice || last.close;
+  const prevClose = meta.previousClose || prev.close;
+  const chg = meta.change != null ? meta.change : (spotPrice - prevClose);
+  const chgp = meta.changePct != null ? meta.changePct : ((chg / prevClose) * 100);
+  const up = chg >= 0;
 
   const scoreCol = proposal.score >= 60 ? 'var(--green)' : proposal.score <= 42 ? 'var(--red)' : 'var(--yellow)';
 
   document.getElementById('scPrice').innerHTML = `
     <div class="price-name">${meta.longName || meta.shortName || ticker}</div>
-    <div class="price-sub">${meta.exchangeName || 'US Equity'} · ${meta.instrumentType || 'EQUITY'} · ${meta.currency || 'USD'}</div>
+    <div class="price-sub">${meta.exchangeName || 'US Equity'} · ${meta.instrumentType || 'EQUITY'} · ${meta.currency || 'USD'}${meta.regularMarketPrice ? ' · <span style="color:var(--green);font-weight:700">● LIVE</span>' : ''}</div>
     <div class="price-row">
-      <div class="price-val">${f$(last.close)}</div>
+      <div class="price-val">${f$(spotPrice)}</div>
       <div class="price-chg ${up ? 'up' : 'dn'}">${up ? '▲' : '▼'} ${f$(Math.abs(chg))} (${fpct(chgp)})</div>
     </div>
     <div class="score-box">
@@ -2339,6 +2340,8 @@ function updateSidebar() {
     : (quant.ttmDiv > 0 ? `${f$(quant.ttmDiv)} (${quant.divYield.toFixed(2)}%)` : 'None');
   document.getElementById('scMarket').style.display = '';
   document.getElementById('metricsContent').innerHTML = [
+    ['Session Open / Prev Close', `${f$(meta.open || last.open)} / ${f$(prevClose)}`],
+    ['Session High / Low', `${f$(meta.dayHigh || last.high)} / ${f$(meta.dayLow || last.low)}`],
     ['Market Cap', meta.marketCapStr ? '$' + meta.marketCapStr : 'N/A'],
     ['P/E Ratio (TTM)', meta.trailingPE != null ? meta.trailingPE.toFixed(2) : 'N/A'],
     ['EPS (TTM)', meta.eps != null ? f$(meta.eps) : 'N/A'],
