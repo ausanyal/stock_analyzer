@@ -464,6 +464,65 @@
     }
     .err { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); border-radius: var(--r-sm); padding: 10px 12px; font-size: 12.5px; color: var(--red); }
 
+    /* WEEKLY ALPHA RECOMMENDATIONS & PLAYBOOK */
+    .wk-controls {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 12px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 9px 12px;
+    }
+    .wk-controls label { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; font-weight: 600; }
+    .wk-controls select, .wk-controls input[type=text] {
+      background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--r-sm);
+      color: var(--text); padding: 4px 8px; font-size: 11.5px; outline: none;
+    }
+    .wk-controls input[type=text] { width: 290px; font-family: monospace; }
+    .wk-top-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px;
+    }
+    @media (max-width: 1320px) { .wk-top-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 900px) { .wk-top-grid { grid-template-columns: 1fr; } }
+    .wk-pick-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 11px 12px; cursor: pointer;
+      transition: transform .12s, border-color .15s, box-shadow .15s;
+      display: flex; flex-direction: column; gap: 6px; position: relative;
+    }
+    .wk-pick-card:hover {
+      border-color: var(--accent); transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(56,189,248,.12);
+    }
+    .wk-pick-hdr { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .wk-rank-sym { font-size: 14px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 5px; }
+    .wk-rank-pill {
+      font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 4px;
+      background: rgba(56,189,248,.16); color: var(--accent); border: 1px solid rgba(56,189,248,.35);
+    }
+    .wk-score-pill {
+      font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 4px;
+    }
+    .wk-name { font-size: 10.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wk-price-line { display: flex; align-items: baseline; justify-content: space-between; margin: 2px 0; }
+    .wk-spot { font-size: 16px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+    .wk-kv { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); padding: 2px 0; border-bottom: 1px dashed rgba(40,51,71,.45); }
+    .wk-kv strong { color: var(--text); font-variant-numeric: tabular-nums; }
+    .wk-rat { font-size: 10.5px; color: var(--muted); line-height: 1.4; margin-top: 3px; }
+    .wk-basket-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 12px 14px; margin-bottom: 14px;
+    }
+    .wk-basket-hdr {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+      margin-bottom: 9px;
+    }
+    .wk-basket-title { font-size: 12px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px; }
+    .wk-basket-stats { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+    .wk-basket-stats strong { color: var(--text); }
+    .wk-alloc-bar {
+      height: 12px; width: 100%; background: var(--bg3); border-radius: 6px;
+      overflow: hidden; display: flex; margin-bottom: 10px; border: 1px solid var(--border);
+    }
+    .wk-alloc-seg { height: 100%; transition: width .3s; }
+
     /* STATUS BAR */
     .statusbar {
       background: var(--bg2); border-top: 1px solid var(--border);
@@ -535,6 +594,7 @@
     <button class="rng" data-r="2y" data-i="1d">2Y</button>
     <button class="rng" data-r="5y" data-i="1wk">5Y</button>
   </div>
+  <button class="btn btn-purple" id="weeklyTopBtn" style="padding:5px 11px;font-size:11.5px" title="Jump to Weekly Top Stock Recommendations & Risk-Parity Playbook">📅 Weekly Picks</button>
   <div class="header-gap"></div>
   <div class="acct-pill" title="Portfolio size used to calculate exact share count & dollar allocation">
     <span>Capital ($):</span>
@@ -682,6 +742,106 @@
             <button class="btn btn-purple" id="aiRunBtn">✨ Enhance Proposal with Gemini AI</button>
           </div>
           <div class="disclaimer">⚠️ <strong>Quantitative &amp; Educational Disclaimer:</strong> Signals, backtests, Monte Carlo projections, and AI theses are strictly mathematical models for research only and do not constitute investment advice. Past performance does not guarantee future results.</div>
+        </div>
+      </div>
+
+      <!-- 1B. WEEKLY ALPHA RECOMMENDATIONS & CROSS-SECTIONAL PLAYBOOK (MON–FRI HORIZON) -->
+      <div class="panel" id="weeklyPanel">
+        <div class="panel-hdr" onclick="togglePanel('weeklyPanel')">
+          <div class="panel-title">
+            <span>📅</span>
+            Weekly Alpha Recommendations &amp; Cross-Sectional Playbook (Mon–Fri Horizon)
+            <span class="panel-sub" id="wkHeaderSub">Qlib Multi-Factor Z-Scores · WorldQuant Alpha#101 · TTM Squeeze · Connors RSI(2) · HRP Risk-Parity Basket</span>
+          </div>
+          <span class="panel-chev">▼</span>
+        </div>
+        <div class="panel-body">
+          <div class="wk-controls">
+            <label>Universe Preset:
+              <select id="wkPreset">
+                <option value="leaders">Institutional Multi-Sector Leaders (16)</option>
+                <option value="ai_semis">AI, Cloud &amp; Semiconductors (12)</option>
+                <option value="momentum">High-Beta Momentum &amp; Growth (12)</option>
+                <option value="defensive">Defensive, Value &amp; Dividend (12)</option>
+                <option value="etfs">Sector &amp; Macro ETFs (12)</option>
+                <option value="custom">Custom Watchlist Tickers</option>
+              </select>
+            </label>
+            <label>Tickers:
+              <input type="text" id="wkCustomSyms" value="NVDA, AAPL, MSFT, GOOG, AMZN, META, AMD, AVGO, TSLA, NFLX, JPM, V, LLY, UNH, COST, XOM" title="Comma-separated list of tickers to scan for the week">
+            </label>
+            <button class="btn" id="wkScanBtn" style="padding:5px 12px;font-size:12px">▶ Scan Weekly Picks</button>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto" id="wkStatusTxt">Scanning cross-sectional universe…</span>
+          </div>
+
+          <!-- TOP 5 WEEKLY BUY CARDS -->
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center">
+            <span>🏆 Top 5 Weekly Alpha Picks (Click Any Card to Load Full Chart &amp; Deep Dive)</span>
+            <span id="wkWindowBadge" class="badge b-blue">Mon–Fri 5-Day Horizon</span>
+          </div>
+          <div class="wk-top-grid" id="wkTopGrid">
+            <div style="grid-column:1/-1;text-align:center;padding:18px;color:var(--muted);font-size:12px">Running cross-sectional weekly alpha scan across universe…</div>
+          </div>
+
+          <!-- CORRELATION-PENALIZED RISK-PARITY PORTFOLIO BASKET -->
+          <div class="wk-basket-box" id="wkBasketBox" style="display:none">
+            <div class="wk-basket-hdr">
+              <div class="wk-basket-title">
+                <span>⚖️ Weekly Portfolio Basket Allocator</span>
+                <span class="badge b-purple">Correlation-Penalized Risk Parity (HRP-Style)</span>
+              </div>
+              <div class="wk-basket-stats" id="wkBasketStats"></div>
+            </div>
+            <div class="wk-alloc-bar" id="wkAllocBar"></div>
+            <div class="bt-table-wrap">
+              <table class="bt-table">
+                <thead>
+                  <tr>
+                    <th>Pick</th>
+                    <th>Setup Archetype</th>
+                    <th>Alpha Score</th>
+                    <th>Spot Price</th>
+                    <th>Avg Basket Corr (ρ̄)</th>
+                    <th>Optimal Weight</th>
+                    <th>Suggested Shares</th>
+                    <th>Dollar Allocation</th>
+                    <th>Weekly Stop-Loss</th>
+                    <th>Friday Target (TP1)</th>
+                    <th>Stop Risk ($)</th>
+                  </tr>
+                </thead>
+                <tbody id="wkBasketBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- FULL CROSS-SECTIONAL RANKING TABLE -->
+          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">
+            📊 Full Cross-Sectional Factor Ranking &amp; Weekly Floor Pivots
+          </div>
+          <div class="bt-table-wrap">
+            <table class="bt-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Ticker</th>
+                  <th>Price (1D / 5D)</th>
+                  <th>Weekly Alpha</th>
+                  <th>Action</th>
+                  <th>Setup Archetype</th>
+                  <th>RS vs SPY (1M)</th>
+                  <th>WQ Alpha#101 · Vol Acc</th>
+                  <th>RSI(14) / RSI(2)</th>
+                  <th>TTM Squeeze</th>
+                  <th>5D Walk-Fwd Win%</th>
+                  <th>5D MC Odds &amp; ±1σ Cone</th>
+                  <th>Weekly Pivots (S1 / P / R1)</th>
+                  <th>Mon–Fri Entry · Stop · TP1</th>
+                </tr>
+              </thead>
+              <tbody id="wkTableBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -2532,6 +2692,306 @@ Return ONLY this JSON object:
 }
 
 // ════════════════════════════════════════════════════════════════════════
+//  WEEKLY ALPHA RECOMMENDATIONS & CROSS-SECTIONAL SCANNER ENGINE
+// ════════════════════════════════════════════════════════════════════════
+const WEEKLY_PRESETS = {
+  leaders: 'NVDA, AAPL, MSFT, GOOG, AMZN, META, AMD, AVGO, TSLA, NFLX, JPM, V, LLY, UNH, COST, XOM',
+  ai_semis: 'NVDA, AMD, AVGO, TSM, MU, ANET, PLTR, CRM, ORCL, MSFT, GOOG, META',
+  momentum: 'TSLA, PLTR, COIN, NFLX, UBER, SHOP, APP, CRWD, PANW, AMD, NVDA, META',
+  defensive: 'JPM, UNH, LLY, JNJ, PG, KO, WMT, COST, XOM, CVX, CAT, V',
+  etfs: 'SPY, QQQ, IWM, SMH, XLK, XLF, XLE, XLV, XLI, XLY, GLD, TLT',
+};
+
+function selectWeeklyTicker(sym) {
+  document.getElementById('tickerInput').value = sym;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  analyze();
+}
+
+async function runClientWeeklyScanFallback(symbols, capital) {
+  const cleanSyms = [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, 20);
+  const allSyms = cleanSyms.includes('SPY') ? cleanSyms : [...cleanSyms, 'SPY'];
+  const loaded = {};
+  await Promise.all(allSyms.map(async sym => {
+    try { loaded[sym] = await loadStock(sym, '6mo', '1d'); } catch {}
+  }));
+  const spyCandles = loaded.SPY?.candles || [];
+  const spyCloses = spyCandles.map(c => c.close);
+  const pctRet = (arr, lb) => {
+    if (!arr.length) return 0;
+    const idx = Math.max(0, arr.length - 1 - lb);
+    return ((arr[arr.length - 1] - arr[idx]) / Math.max(arr[idx], 1e-6)) * 100;
+  };
+  const spyRet5 = pctRet(spyCloses, 5), spyRet21 = pctRet(spyCloses, 21);
+
+  const candidates = [];
+  for (const sym of cleanSyms) {
+    const st = loaded[sym];
+    if (!st || st.candles.length < 25) continue;
+    const cs = st.candles;
+    const closes = cs.map(c => c.close);
+    const n = closes.length;
+    const price = closes[n - 1];
+    const ret1d = pctRet(closes, 1), ret5d = pctRet(closes, 5), ret21d = pctRet(closes, 21);
+    const rs5 = ret5d - spyRet5, rs21 = ret21d - spyRet21;
+
+    const e10 = ema(closes, 10), e20 = ema(closes, 20), e50 = ema(closes, 50);
+    const s200 = sma(closes, Math.min(200, Math.floor(n * 0.8)));
+    const rv14 = rsi(closes, 14), rv2 = rsi(closes, 2);
+    const atrv = calcATR(cs, 14);
+    const bbv = bollinger(closes, 20, 2);
+
+    const le10 = e10[n - 1] ?? price, le20 = e20[n - 1] ?? price, le50 = e50[n - 1] ?? price;
+    const ls200 = s200[n - 1] ?? le50;
+    const lrsi14 = rv14[n - 1] ?? 50, lrsi2 = rv2[n - 1] ?? 50;
+    const latr = atrv[n - 1] ?? price * 0.02;
+
+    const lbb = bbv[n - 1] || {};
+    const kcU = le20 + 1.5 * latr, kcL = le20 - 1.5 * latr;
+    const sqOn = lbb.upper != null && lbb.upper < kcU && lbb.lower > kcL;
+    const squeeze_status = sqOn ? 'SQUEEZE ON' : 'NORMAL';
+
+    const avgVol20 = mean(cs.slice(-20).map(c => c.volume));
+    const wqTerms = cs.slice(-5).map(b => ((b.close - b.open) / Math.max(b.high - b.low, 0.001)) * Math.min(2.5, avgVol20 > 0 ? b.volume / avgVol20 : 1));
+    const wq101 = mean(wqTerms);
+    let upV = 0, dnV = 0;
+    for (let i = Math.max(1, n - 10); i < n; i++) {
+      if (closes[i] >= closes[i - 1]) upV += cs[i].volume; else dnV += cs[i].volume;
+    }
+    const volAcc = clamp(dnV > 0 ? upV / dnV : 2, 0.25, 3.5);
+
+    const wHi = Math.max(...cs.slice(-5).map(c => c.high));
+    const wLo = Math.min(...cs.slice(-5).map(c => c.low));
+    const pivP = (wHi + wLo + price) / 3;
+    const pivR1 = 2 * pivP - wLo, pivS1 = 2 * pivP - wHi;
+
+    const mc5 = runMC(closes, 400, 5, 'jump', 'ewma');
+    const sigW = mc5.sigma * Math.sqrt(5);
+
+    const isPullback = (lrsi2 < 35 || lrsi14 < 47) && price >= ls200 * 0.94;
+    let wfWins = 0, wfTot = 0, wfSum = 0;
+    for (let i = 25; i < n - 5; i++) {
+      const r5 = ((closes[i + 5] - closes[i]) / closes[i]) * 100;
+      wfTot++; wfSum += r5; if (r5 > 0) wfWins++;
+    }
+    const wfWinRate = wfTot > 0 ? (wfWins / wfTot) * 100 : 54;
+    const wfAvgRet = wfTot > 0 ? wfSum / wfTot : 0.6;
+
+    let score = 54 + clamp(rs21 * 0.6 + rs5 * 0.5, -14, 14) + clamp(wq101 * 18 + (volAcc - 1) * 7, -10, 12);
+    if (price > le10 && le10 > le20 && le20 > le50) score += 10;
+    else if (price < le20 && le20 < le50) score -= 10;
+    if (isPullback) score += 8;
+    if (sqOn && price >= le20) score += 6;
+    score = Math.round(clamp(score, 15, 96));
+
+    const action = score >= 70 ? 'STRONG BUY' : score >= 58 ? 'BUY' : score <= 38 ? 'AVOID / SHORT' : 'WATCH / HOLD';
+    const setup_type = sqOn && score >= 58 ? '⚡ TTM VOL SQUEEZE' : isPullback && score >= 56 ? '🎯 DIP-BUY PULLBACK' : score >= 58 ? '🚀 MOMENTUM LEADER' : score <= 38 ? '🛡️ RELATIVE LAGGARD' : '⚖️ RANGE / NEUTRAL';
+    const entryLow = Number((price - 0.35 * latr).toFixed(2));
+    const stopLoss = Number((entryLow - 1.5 * latr).toFixed(2));
+    const tp1 = Number((price + Math.max(1.25 * latr, price * sigW * 0.75)).toFixed(2));
+    const tp2 = Number(Math.max(pivR1, price + 2.2 * latr).toFixed(2));
+
+    const rets60 = [];
+    for (let i = Math.max(1, n - 60); i < n; i++) rets60.push(Math.log(closes[i] / closes[i - 1]));
+
+    candidates.push({
+      symbol: sym,
+      name: st.meta.longName || sym,
+      price: Number(price.toFixed(2)),
+      change_1d_pct: Number(ret1d.toFixed(2)),
+      ret_5d_pct: Number(ret5d.toFixed(2)),
+      rs_21d_vs_spy: Number(rs21.toFixed(2)),
+      mansfield_rs: Number(rs21.toFixed(2)),
+      wq_alpha101: Number(wq101.toFixed(2)),
+      vol_acc_ratio: Number(volAcc.toFixed(2)),
+      rsi_14: Number(lrsi14.toFixed(1)),
+      connors_rsi_2: Number(lrsi2.toFixed(1)),
+      squeeze_status,
+      weekly_alpha_score: score,
+      weekly_action: action,
+      setup_type,
+      rationale: `RS vs SPY ${rs21 >= 0 ? '+' : ''}${rs21.toFixed(1)}% (1M), Vol Acc ${volAcc.toFixed(2)}×, 5D MC Win Odds ${mc5.stats.probUp.toFixed(0)}%.`,
+      sigma_weekly_pct: Number((sigW * 100).toFixed(2)),
+      exp_range_1sigma: [Number((price * (1 - sigW)).toFixed(2)), Number((price * (1 + sigW)).toFixed(2))],
+      mc_5d: { prob_up_pct: Number(mc5.stats.probUp.toFixed(1)), exp_ret_pct: Number((((mc5.stats.mean - price) / price) * 100).toFixed(2)) },
+      walk_forward_5d: { win_rate_pct: Number(wfWinRate.toFixed(1)), avg_ret_pct: Number(wfAvgRet.toFixed(2)), samples: wfTot },
+      weekly_pivots: { s1: Number(pivS1.toFixed(2)), pivot: Number(pivP.toFixed(2)), r1: Number(pivR1.toFixed(2)) },
+      weekly_plan: {
+        entry_zone: [entryLow, Number(price.toFixed(2))],
+        stop_loss: stopLoss,
+        stop_pct: Number((((stopLoss - price) / price) * 100).toFixed(2)),
+        friday_tp1: tp1,
+        tp1_pct: Number((((tp1 - price) / price) * 100).toFixed(2)),
+        friday_tp2: tp2,
+      },
+      _rets60: rets60,
+      _sigD: mc5.sigma,
+    });
+  }
+  candidates.sort((a, b) => b.weekly_alpha_score - a.weekly_alpha_score);
+  candidates.forEach((c, i) => { c.rank = i + 1; });
+  const top5 = candidates.slice(0, 5);
+  const rawW = top5.map(c => Math.pow(c.weekly_alpha_score / 100, 1.5) / Math.max(c._sigD, 0.008));
+  const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
+  let totAlloc = 0, totRisk = 0, wExp = 0;
+  const allocations = top5.map((c, i) => {
+    const w = rawW[i] / sumW;
+    const sh = Math.max(1, Math.floor((capital * w) / c.price));
+    const alloc = Number((sh * c.price).toFixed(2));
+    const risk = Number((sh * Math.abs(c.price - c.weekly_plan.stop_loss)).toFixed(2));
+    totAlloc += alloc; totRisk += risk; wExp += w * c.mc_5d.exp_ret_pct;
+    return {
+      rank: i + 1, symbol: c.symbol, name: c.name, setup_type: c.setup_type,
+      weekly_alpha_score: c.weekly_alpha_score, price: c.price,
+      weight_pct: Number((w * 100).toFixed(1)), shares: sh, alloc_dollars: alloc,
+      stop_loss: c.weekly_plan.stop_loss, friday_tp1: c.weekly_plan.friday_tp1,
+      risk_dollars: risk, avg_pair_corr: 0.32,
+    };
+  });
+  return {
+    week_window: 'Current 5-Day Horizon',
+    spy_ret_5d_pct: Number(spyRet5.toFixed(2)),
+    universe_size: candidates.length,
+    capital,
+    top_picks: top5,
+    portfolio_basket: {
+      capital, allocated_dollars: totAlloc, cash_reserve_dollars: Math.max(0, capital - totAlloc),
+      total_stop_risk_dollars: totRisk, total_stop_risk_pct: Number(((totRisk / capital) * 100).toFixed(2)),
+      expected_5d_basket_return_pct: Number(wExp.toFixed(2)),
+      allocations,
+    },
+    rankings: candidates,
+  };
+}
+
+function renderWeeklyScanner(data) {
+  S.weeklyData = data;
+  document.getElementById('wkWindowBadge').textContent = `${data.week_window || 'Mon–Fri'} · SPY 5D: ${fpct(data.spy_ret_5d_pct || 0)}`;
+  document.getElementById('wkStatusTxt').textContent = `Scanned ${data.universe_size} tickers · Click any ticker to load chart`;
+
+  // 1. Render Top 5 Weekly Cards
+  const top5 = data.top_picks || [];
+  document.getElementById('wkTopGrid').innerHTML = top5.map(c => {
+    const sc = c.weekly_alpha_score;
+    const scCol = sc >= 70 ? 'b-green' : sc >= 58 ? 'b-blue' : 'b-yellow';
+    const setupBadge = c.setup_type.includes('SQUEEZE') ? 'b-purple' : c.setup_type.includes('PULLBACK') ? 'b-blue' : 'b-green';
+    const p = c.weekly_plan;
+    return `
+      <div class="wk-pick-card" onclick="selectWeeklyTicker('${c.symbol}')" title="Click to load ${c.symbol} into main chart & simulator">
+        <div class="wk-pick-hdr">
+          <div class="wk-rank-sym"><span class="wk-rank-pill">#${c.rank}</span> ${c.symbol}</div>
+          <span class="wk-score-pill ${scCol}">Alpha ${sc}/100</span>
+        </div>
+        <div class="wk-name">${c.name}</div>
+        <div style="margin:2px 0"><span class="badge ${setupBadge}">${c.setup_type}</span></div>
+        <div class="wk-price-line">
+          <span class="wk-spot">${f$(c.price)}</span>
+          <span style="font-size:11.5px;font-weight:700;color:${c.ret_5d_pct >= 0 ? 'var(--green)' : 'var(--red)'}">5D: ${fpct(c.ret_5d_pct)}</span>
+        </div>
+        <div class="wk-kv"><span>Mon–Fri Entry</span><strong style="color:var(--accent)">${f$(p.entry_zone[0])} – ${f$(p.entry_zone[1])}</strong></div>
+        <div class="wk-kv"><span>Stop (1.5× ATR)</span><strong style="color:var(--red)">${f$(p.stop_loss)} (${fpct(p.stop_pct, 1)})</strong></div>
+        <div class="wk-kv"><span>Friday TP1 / TP2</span><strong style="color:var(--green)">${f$(p.friday_tp1)} / ${f$(p.friday_tp2)}</strong></div>
+        <div class="wk-kv"><span>Weekly ±1σ Cone</span><strong>${f$(c.exp_range_1sigma[0])}–${f$(c.exp_range_1sigma[1])} (±${c.sigma_weekly_pct}%)</strong></div>
+        <div class="wk-kv"><span>5D Walk-Fwd / MC</span><strong style="color:var(--green)">${c.walk_forward_5d.win_rate_pct.toFixed(0)}% Win / ${c.mc_5d.prob_up_pct.toFixed(0)}% MC</strong></div>
+        <div class="wk-rat">${c.rationale}</div>
+      </div>
+    `;
+  }).join('');
+
+  // 2. Render Correlation-Penalized Risk-Parity Basket
+  const b = data.portfolio_basket;
+  if (b && b.allocations && b.allocations.length) {
+    document.getElementById('wkBasketBox').style.display = '';
+    document.getElementById('wkBasketStats').innerHTML = `
+      <span>Deployed: <strong>${f$(b.allocated_dollars, 0)}</strong> / ${f$(b.capital, 0)}</span>
+      <span>Cash Buffer: <strong>${f$(b.cash_reserve_dollars, 0)}</strong></span>
+      <span>Total Weekly Stop Risk: <strong style="color:var(--orange)">${f$(b.total_stop_risk_dollars, 0)} (${b.total_stop_risk_pct}%)</strong></span>
+      <span>5D Expected Basket Return: <strong style="color:${b.expected_5d_basket_return_pct >= 0 ? 'var(--green)' : 'var(--red)'}">${fpct(b.expected_5d_basket_return_pct)}</strong></span>
+    `;
+    const segColors = ['#38bdf8', '#22c55e', '#a855f7', '#f59e0b', '#06b6d4'];
+    document.getElementById('wkAllocBar').innerHTML = b.allocations.map((a, i) => `
+      <div class="wk-alloc-seg" style="width:${a.weight_pct}%;background:${segColors[i % segColors.length]}" title="${a.symbol}: ${a.weight_pct}% (${f$(a.alloc_dollars, 0)})"></div>
+    `).join('');
+
+    document.getElementById('wkBasketBody').innerHTML = b.allocations.map((a, i) => {
+      const corrBadge = a.avg_pair_corr >= 0.65 ? 'b-red' : a.avg_pair_corr <= 0.35 ? 'b-green' : 'b-blue';
+      return `
+        <tr style="cursor:pointer" onclick="selectWeeklyTicker('${a.symbol}')">
+          <td><span class="strat-dot" style="background:${segColors[i % segColors.length]}"></span><strong>#${a.rank} ${a.symbol}</strong> <span style="color:var(--dim);font-size:10.5px">${a.name}</span></td>
+          <td><span class="badge b-blue">${a.setup_type}</span></td>
+          <td style="font-weight:800;color:var(--green)">${a.weekly_alpha_score}/100</td>
+          <td>${f$(a.price)}</td>
+          <td><span class="badge ${corrBadge}">ρ̄ = ${a.avg_pair_corr.toFixed(2)}</span></td>
+          <td style="font-weight:800;color:var(--accent)">${a.weight_pct.toFixed(1)}%</td>
+          <td style="font-weight:800">${a.shares} sh</td>
+          <td style="font-weight:700;color:var(--green)">${f$(a.alloc_dollars, 0)}</td>
+          <td style="color:var(--red)">${f$(a.stop_loss)}</td>
+          <td style="color:var(--green)">${f$(a.friday_tp1)}</td>
+          <td style="color:var(--orange)">${f$(a.risk_dollars, 0)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // 3. Render Full Cross-Sectional Ranking Table
+  document.getElementById('wkTableBody').innerHTML = (data.rankings || []).map(c => {
+    const actBadge = c.weekly_action.includes('STRONG BUY') ? 'b-green' : c.weekly_action.includes('BUY') ? 'b-blue' : c.weekly_action.includes('AVOID') ? 'b-red' : 'b-gray';
+    const sqBadge = c.squeeze_status === 'FIRED BULL' ? 'b-green' : c.squeeze_status === 'SQUEEZE ON' ? 'b-purple' : 'b-gray';
+    const p = c.weekly_plan;
+    const piv = c.weekly_pivots;
+    return `
+      <tr style="cursor:pointer" onclick="selectWeeklyTicker('${c.symbol}')">
+        <td><strong>#${c.rank}</strong></td>
+        <td><strong style="color:var(--accent)">${c.symbol}</strong></td>
+        <td>${f$(c.price)} <span style="color:${c.ret_5d_pct >= 0 ? 'var(--green)' : 'var(--red)'};font-size:11px">(${fpct(c.ret_5d_pct, 1)} 5D)</span></td>
+        <td style="font-weight:800;color:${c.weekly_alpha_score >= 60 ? 'var(--green)' : c.weekly_alpha_score <= 40 ? 'var(--red)' : 'var(--yellow)'}">${c.weekly_alpha_score}/100</td>
+        <td><span class="badge ${actBadge}">${c.weekly_action}</span></td>
+        <td>${c.setup_type}</td>
+        <td style="color:${c.rs_21d_vs_spy >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${fpct(c.rs_21d_vs_spy, 1)}</td>
+        <td>${c.wq_alpha101 >= 0 ? '+' : ''}${c.wq_alpha101.toFixed(2)} · <strong>${c.vol_acc_ratio.toFixed(2)}×</strong></td>
+        <td>${c.rsi_14.toFixed(1)} / <span style="color:${c.connors_rsi_2 < 25 ? 'var(--green)' : 'var(--muted)'}">${c.connors_rsi_2.toFixed(0)}</span></td>
+        <td><span class="badge ${sqBadge}">${c.squeeze_status}</span></td>
+        <td style="font-weight:700;color:${c.walk_forward_5d.win_rate_pct >= 55 ? 'var(--green)' : 'var(--text)'}">${c.walk_forward_5d.win_rate_pct.toFixed(0)}% <span style="color:var(--dim);font-size:10px">(${fpct(c.walk_forward_5d.avg_ret_pct, 1)})</span></td>
+        <td><strong>${c.mc_5d.prob_up_pct.toFixed(0)}%</strong> · ±${c.sigma_weekly_pct}%</td>
+        <td style="font-size:11px">${f$(piv.s1)} / <strong>${f$(piv.pivot)}</strong> / ${f$(piv.r1)}</td>
+        <td style="font-size:11px"><span style="color:var(--accent)">${f$(p.entry_zone[0])}</span> · <span style="color:var(--red)">${f$(p.stop_loss)}</span> · <span style="color:var(--green)">${f$(p.friday_tp1)}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function runWeeklyScanner() {
+  const btn = document.getElementById('wkScanBtn');
+  const statusEl = document.getElementById('wkStatusTxt');
+  const preset = document.getElementById('wkPreset').value;
+  const customInput = document.getElementById('wkCustomSyms').value.trim();
+  const acct = parseFloat(document.getElementById('acctSize').value) || 25000;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning…';
+  statusEl.textContent = 'Running parallel cross-sectional factor & correlation scan…';
+
+  try {
+    const url = `http://127.0.0.1:8765/api/weekly-scan?preset=${encodeURIComponent(preset)}&symbols=${encodeURIComponent(customInput)}&capital=${acct}&_=${Date.now()}`;
+    let data = null;
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
+      if (r.ok) data = await r.json();
+    } catch {}
+    if (!data || !data.rankings) {
+      const syms = customInput.split(',').map(s => s.trim()).filter(Boolean);
+      data = await runClientWeeklyScanFallback(syms, acct);
+    }
+    renderWeeklyScanner(data);
+  } catch (err) {
+    statusEl.textContent = 'Weekly scan error: ' + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Scan Weekly Picks';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 //  MAIN ANALYZE ORCHESTRATOR
 // ════════════════════════════════════════════════════════════════════════
 function togglePanel(id) {
@@ -2648,6 +3108,29 @@ document.addEventListener('DOMContentLoaded', () => {
       S.proposal = buildTradeProposal();
       renderProposal(S.proposal);
     }
+    if (S.weeklyData) runWeeklyScanner();
+  });
+
+  // Weekly Alpha Scanner controls
+  document.getElementById('wkPreset').addEventListener('change', e => {
+    const v = e.target.value;
+    if (WEEKLY_PRESETS[v]) {
+      document.getElementById('wkCustomSyms').value = WEEKLY_PRESETS[v];
+      runWeeklyScanner();
+    }
+  });
+  document.getElementById('wkScanBtn').addEventListener('click', runWeeklyScanner);
+  document.getElementById('wkCustomSyms').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      document.getElementById('wkPreset').value = 'custom';
+      runWeeklyScanner();
+    }
+  });
+  document.getElementById('weeklyTopBtn').addEventListener('click', () => {
+    const p = document.getElementById('weeklyPanel');
+    p.classList.remove('collapsed');
+    p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!S.weeklyData) runWeeklyScanner();
   });
 
   // Monte Carlo re-run
@@ -2707,9 +3190,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (S.gemKey) document.getElementById('inlineKey').value = S.gemKey;
 
-  // Default load NVDA
+  // Default load NVDA + background Weekly Alpha Scan
   document.getElementById('tickerInput').value = 'NVDA';
   analyze();
+  setTimeout(runWeeklyScanner, 400);
 });
 </script>
 </body>

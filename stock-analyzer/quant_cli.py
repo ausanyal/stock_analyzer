@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 
 
-from server import build_chart_payload
+from server import build_chart_payload, run_weekly_scan
 
 
 def fetch_yahoo_chart(symbol: str, rng: str = "1y", interval: str = "1d") -> dict:
@@ -364,13 +364,19 @@ def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: floa
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="StockSage Quant Pro CLI")
-    parser.add_argument("ticker", help="Stock ticker symbol (e.g. NVDA, AAPL)")
+    parser.add_argument("ticker", nargs="?", default="NVDA", help="Stock ticker symbol or comma-separated list (e.g. NVDA, AAPL)")
+    parser.add_argument("--weekly", action="store_true", help="Run cross-sectional Weekly Alpha Picks & Risk-Parity Basket scanner")
+    parser.add_argument("--preset", default="leaders", help="Weekly universe preset (leaders, ai_semis, momentum, defensive, etfs)")
     parser.add_argument("--range", default="1y", help="History range (3mo, 6mo, 1y, 2y, 5y)")
     parser.add_argument("--days", type=int, default=63, help="Monte Carlo forecast horizon in trading days")
     parser.add_argument("--capital", type=float, default=25000.0, help="Portfolio capital for position sizing")
     args = parser.parse_args()
     try:
-        report = analyze_ticker(args.ticker, args.range, args.days, args.capital)
+        if args.weekly or args.ticker.upper() == "WEEKLY":
+            syms = [s.strip() for s in args.ticker.split(",") if s.strip()] if ("," in args.ticker) else None
+            report = run_weekly_scan(symbols=syms, capital=args.capital, preset=args.preset)
+        else:
+            report = analyze_ticker(args.ticker, args.range, args.days, args.capital)
         print(json.dumps(report, indent=2))
     except Exception as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)

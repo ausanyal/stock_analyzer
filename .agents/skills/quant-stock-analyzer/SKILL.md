@@ -1,19 +1,23 @@
 ---
 name: quant-stock-analyzer
-description: Institutional quantitative stock analysis, stochastic Monte Carlo simulations (Merton Jump-Diffusion, GBM, Bootstrap), Volume Profile (POC/VAH/VAL), quants.md systematic strategy backtesting, and trade proposal generation (Buy/Sell/Hold verdict, entry zone, ATR stop-loss, R-multiple profit targets, holding period, and Kelly position sizing). Activate whenever the user asks to analyze a stock ticker, run price simulations, inspect price bars, or propose whether/when to buy or sell.
+description: Institutional quantitative stock analysis, Weekly Alpha Recommendations & Cross-Sectional Scanner (Qlib Z-scores, WorldQuant Alpha#101, TTM Squeeze, Connors RSI-2, HRP Risk-Parity Basket), stochastic Monte Carlo simulations (Merton Jump-Diffusion, GBM, Bootstrap), Volume Profile (POC/VAH/VAL), quants.md systematic strategy backtesting, and trade proposal generation. Activate whenever the user asks to analyze a stock ticker, get weekly stock recommendations, run price simulations, inspect price bars, or propose whether/when to buy or sell.
 ---
 
 # Quant Stock Analyzer Skill (`quants.md` & Institutional Quantitative Framework)
 
-When the user asks you to analyze any stock ticker, simulate its price path, inspect its bars, or recommend whether to buy/sell/hold with an entry point and holding horizon:
+When the user asks you to analyze any stock ticker, generate **weekly stock recommendations**, simulate its price path, inspect its bars, or recommend whether to buy/sell/hold with an entry point and holding horizon:
 
 ## Step 1: Execute the Quantitative Telemetry Engine
-Run the standalone quantitative CLI script (`stock-analyzer/quant_cli.py`) to fetch live OHLCV bars, compute technicals, Volume Profile, Hurst regime, and run a 1,000-path Merton Jump-Diffusion Monte Carlo simulation:
-
-```bash
-python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py <TICKER> --range 1y --days 63
-```
-*(Note: Requires outbound network access to Yahoo Finance v8 chart API; run with `BypassSandbox: true` if sandboxed network is restricted).*
+- **Single-Ticker Deep Dive**:
+  ```bash
+  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py <TICKER> --range 1y --days 63
+  ```
+- **Weekly Top Picks & Cross-Sectional Alpha Scanner (Mon–Fri Playbook)**:
+  ```bash
+  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py --weekly --preset leaders --capital 25000
+  ```
+  *(Supported `--preset` values: `leaders`, `ai_semis`, `momentum`, `defensive`, `etfs`, or pass custom tickers like `NVDA,AMD,GOOG,AVGO --weekly`)*
+*(Note: Requires outbound network access to Official Nasdaq & CNBC APIs; run with `BypassSandbox: true` if sandboxed network is restricted).*
 
 ## Step 2: Enforce `quants.md` Institutional Research Standards
 Always evaluate and report across these five quantitative pillars:
