@@ -487,32 +487,62 @@ def _analyze_weekly_candidate(sym: str, payload: dict, spy_map: dict, spy_closes
     wf_win_rate = (sum(1 for r in wf_rets if r > 0) / max(1, len(wf_rets))) * 100.0
     wf_avg_ret = sum(wf_rets) / max(1, len(wf_rets))
 
-    # 8. Raw Factor Composite for Cross-Sectional Z-Scoring
+    # 8. Fundamental Valuation (P/E, Fwd P/E) & Short-Term Overextension ("Stretched" Guardrail)
+    pe_ttm = meta.get("trailingPE")
+    pe_fwd = meta.get("forwardPE")
+    stretch_20_atr = (price - le20) / max(l_atr, 0.01)
+    stretch_50_atr = (price - le50) / max(l_atr, 0.01)
+
+    # High P/E without rapid forward earnings compression (e.g. defensive retail at ~50x P/E)
+    fwd_ratio = (pe_fwd / pe_ttm) if (pe_ttm and pe_ttm > 0 and pe_fwd and pe_fwd > 0) else 0.90
+    is_val_stretched = bool(pe_ttm is not None and pe_ttm >= 42.0 and fwd_ratio > 0.80)
+    is_tech_stretched = bool(
+        (stretch_20_atr >= 1.65 or stretch_50_atr >= 3.2 or l_rsi14 >= 64.5)
+        and not is_pullback_mode
+        and squeeze_status == "NORMAL"
+    )
+
+    f_val_stretch = 0.0
+    if pe_ttm is not None and pe_ttm > 0:
+        if pe_ttm <= 24.0:
+            f_val_stretch += 7.0  # Attractive valuation margin of safety
+        elif pe_ttm <= 32.0:
+            f_val_stretch += 3.0
+        elif is_val_stretched:
+            f_val_stretch -= min(16.0, (pe_ttm - 35.0) * 0.75)
+
+    if is_tech_stretched:
+        # Penalize short-term weekly chasing when already extended above EMA20/50
+        f_val_stretch -= min(14.0, max(4.0, (stretch_20_atr - 1.0) * 5.5))
+        if wq_alpha101 < 0:
+            f_val_stretch -= 6.0  # Intraday exhaustion at highs
+
+    # 9. Raw Factor Composite for Cross-Sectional Z-Scoring
     f_rs = 0.35 * rs_5d + 0.40 * rs_21d + 0.25 * mansfield_rs
     f_flow = wq_alpha101 * 45.0 + (vol_acc_ratio - 1.0) * 18.0
-    f_tech = 0.0
+    f_tech = f_val_stretch
     if price > le10 > le20 > le50:
-        f_tech += 18.0
+        f_tech += 14.0
     elif price > le20 > le50:
-        f_tech += 12.0
+        f_tech += 10.0
     elif price < le20 < le50:
         f_tech -= 14.0
     if price > s200:
-        f_tech += 8.0
+        f_tech += 7.0
     else:
         f_tech -= 8.0
     if is_pullback_mode:
-        f_tech += 14.0  # Institutional Connors RSI pullback in uptrend
-    elif 50.0 <= l_rsi14 <= 67.0:
+        f_tech += 15.0  # Institutional Connors RSI pullback in uptrend
+    elif 48.0 <= l_rsi14 <= 62.0:
         f_tech += 9.0
-    elif l_rsi14 > 76.0:
-        f_tech -= 8.0
+    elif l_rsi14 > 64.5:
+        f_tech -= 7.0
     if squeeze_status == "FIRED BULL":
-        f_tech += 12.0
+        f_tech += 14.0
     elif squeeze_status == "SQUEEZE ON" and price >= le20:
-        f_tech += 8.0
+        f_tech += 11.0
 
-    f_stat = (wf_win_rate - 50.0) * 0.55 + (mc_prob_up_5d - 50.0) * 0.45 + wf_avg_ret * 2.5
+    f_stat = (wf_win_rate - 50.0) * 0.50 + (mc_prob_up_5d - 50.0) * 0.50 + mc_exp_ret_5d * 3.0
 
     # Map recent 60 aligned daily returns by timestamp for pairwise correlation matrix
     ret_by_ts = {}
@@ -524,6 +554,11 @@ def _analyze_weekly_candidate(sym: str, payload: dict, spy_map: dict, spy_closes
         "symbol": sym.upper(),
         "name": meta.get("longName") or meta.get("shortName") or sym.upper(),
         "price": round(price, 2),
+        "pe_ttm": round(pe_ttm, 1) if pe_ttm is not None else None,
+        "pe_fwd": round(pe_fwd, 1) if pe_fwd is not None else None,
+        "stretch_20_atr": round(stretch_20_atr, 2),
+        "is_val_stretched": is_val_stretched,
+        "is_tech_stretched": is_tech_stretched,
         "change_1d_pct": round(meta.get("changePct") if meta.get("changePct") is not None else ret_1d, 2),
         "ret_5d_pct": round(ret_5d, 2),
         "ret_21d_pct": round(ret_21d, 2),
@@ -657,54 +692,73 @@ def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str 
         )
         z_comp = 0.32 * rf["tech_z"] + 0.28 * rf["rs_z"] + 0.20 * rf["flow_z"] + 0.20 * rf["stat_z"]
         score = int(round(max(12.0, min(97.0, 0.65 * raw_abs + 0.35 * (55.0 + z_comp * 18.0)))))
-        c["weekly_alpha_score"] = score
 
         price = c["price"]
         atr = c["atr_14"]
         sig_w = c["sigma_weekly_pct"] / 100.0
         piv = c["weekly_pivots"]
+        pe_str = f"P/E {c['pe_ttm']}x" if c.get("pe_ttm") else "N/A P/E"
 
-        if score >= 70:
-            action = "STRONG BUY"
-        elif score >= 58:
-            action = "BUY"
-        elif score <= 38:
-            action = "AVOID / SHORT"
+        # Guardrail: Prevent short-term weekly chasing on stocks that are both Valuation-Stretched & Technically Overextended
+        if c["is_val_stretched"] and c["is_tech_stretched"]:
+            score = min(score, 55)
+            action = "WAIT PULLBACK / DCA"
+            setup_type = "⚠️ STRETCHED / RICH P/E"
+            rationale = (
+                f"High-quality momentum ({c['rs_21d_vs_spy']:+.1f}% vs SPY), but stretched +{c['stretch_20_atr']:.1f}× ATR above EMA20 "
+                f"(RSI {c['rsi_14']:.1f}) at a steep {pe_str} — risky 1-week chase; wait for pullback to ${c['ema_20']} or DCA."
+            )
+        elif c["is_tech_stretched"] and c["wq_alpha101"] < 0:
+            score = min(score, 56)
+            action = "WAIT PULLBACK"
+            setup_type = "⚠️ SHORT-TERM STRETCHED"
+            rationale = (
+                f"Extended +{c['stretch_20_atr']:.1f}× ATR above EMA20 (${c['ema_20']}) with RSI {c['rsi_14']:.1f} "
+                f"and negative 5D intraday body ({c['wq_alpha101']:+.2f}); wait for dip toward S1 (${piv['s1']})."
+            )
         else:
-            action = "WATCH / HOLD"
+            if score >= 70:
+                action = "STRONG BUY"
+            elif score >= 58:
+                action = "BUY"
+            elif score <= 38:
+                action = "AVOID / SHORT"
+            else:
+                action = "WATCH / HOLD"
+
+            if c["squeeze_status"] in ("SQUEEZE ON", "FIRED BULL") and score >= 58:
+                setup_type = "⚡ TTM VOL SQUEEZE"
+                rationale = (
+                    f"Volatility coil ({c['squeeze_status']}, {pe_str}) with Mansfield RS {c['mansfield_rs']:+.1f}%, "
+                    f"WQ Alpha#101 {c['wq_alpha101']:+.2f}, and {c['walk_forward_5d']['win_rate_pct']:.0f}% 5D walk-forward hit rate."
+                )
+            elif c["is_pullback_setup"] and score >= 56:
+                setup_type = "🎯 DIP-BUY PULLBACK"
+                rationale = (
+                    f"Secular uptrend (>SMA200 ${c['sma_200']}, {pe_str}) with oversold Connors RSI(2)={c['connors_rsi_2']:.0f} "
+                    f"into weekly support S1 (${piv['s1']}); {c['walk_forward_5d']['win_rate_pct']:.0f}% historical 5D bounce rate."
+                )
+            elif score >= 58:
+                setup_type = "🚀 MOMENTUM LEADER"
+                rationale = (
+                    f"Outperforming SPY by {c['rs_21d_vs_spy']:+.1f}% (1M, {pe_str}) with {c['vol_acc_ratio']:.2f}× volume accumulation "
+                    f"and {c['mc_5d']['prob_up_pct']:.0f}% 5D Monte Carlo win probability."
+                )
+            elif score <= 38:
+                setup_type = "🛡️ RELATIVE LAGGARD"
+                rationale = (
+                    f"Trailing SPY ({c['rs_21d_vs_spy']:+.1f}% 1M) with weak money flow ({c['vol_acc_ratio']:.2f}× Up/Dn vol) "
+                    f"and below key moving averages."
+                )
+            else:
+                setup_type = "⚖️ RANGE / NEUTRAL"
+                rationale = (
+                    f"Consolidating near Weekly Pivot (${piv['pivot']}, {pe_str}) with RSI(14)={c['rsi_14']:.1f}; "
+                    f"await breakout above ${piv['r1']} or pullback to ${piv['s1']}."
+                )
+
+        c["weekly_alpha_score"] = score
         c["weekly_action"] = action
-
-        if c["squeeze_status"] in ("SQUEEZE ON", "FIRED BULL") and score >= 58:
-            setup_type = "⚡ TTM VOL SQUEEZE"
-            rationale = (
-                f"Volatility coil ({c['squeeze_status']}) with Mansfield RS {c['mansfield_rs']:+.1f}%, "
-                f"WQ Alpha#101 {c['wq_alpha101']:+.2f}, and {c['walk_forward_5d']['win_rate_pct']:.0f}% 5D walk-forward hit rate."
-            )
-        elif c["is_pullback_setup"] and score >= 56:
-            setup_type = "🎯 DIP-BUY PULLBACK"
-            rationale = (
-                f"Secular uptrend (>SMA200 ${c['sma_200']}) with oversold Connors RSI(2)={c['connors_rsi_2']:.0f} "
-                f"into weekly support S1 (${piv['s1']}); {c['walk_forward_5d']['win_rate_pct']:.0f}% historical 5D bounce rate."
-            )
-        elif score >= 58:
-            setup_type = "🚀 MOMENTUM LEADER"
-            rationale = (
-                f"Outperforming SPY by {c['rs_21d_vs_spy']:+.1f}% (1M) with {c['vol_acc_ratio']:.2f}× institutional volume accumulation "
-                f"and {c['mc_5d']['prob_up_pct']:.0f}% 5D Monte Carlo win probability."
-            )
-        elif score <= 38:
-            setup_type = "🛡️ RELATIVE LAGGARD"
-            rationale = (
-                f"Trailing SPY ({c['rs_21d_vs_spy']:+.1f}% 1M) with weak money flow ({c['vol_acc_ratio']:.2f}× Up/Dn vol) "
-                f"and below key moving averages."
-            )
-        else:
-            setup_type = "⚖️ RANGE / NEUTRAL"
-            rationale = (
-                f"Consolidating near Weekly Pivot (${piv['pivot']}) with RSI(14)={c['rsi_14']:.1f}; "
-                f"await breakout above ${piv['r1']} or pullback to ${piv['s1']}."
-            )
-
         c["setup_type"] = setup_type
         c["rationale"] = rationale
 
@@ -742,8 +796,8 @@ def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str 
     for idx, c in enumerate(candidates):
         c["rank"] = idx + 1
 
-    # Top 5 Bullish Weekly Picks -> Correlation-Penalized Risk-Parity (HRP-Style) Basket
-    top_picks = [c for c in candidates if c["weekly_alpha_score"] >= 55][:5]
+    # Top 5 Bullish Weekly Picks (excluding Stretched/Rich-PE & Laggards) -> Correlation-Penalized Risk-Parity Basket
+    top_picks = [c for c in candidates if c["weekly_action"] in ("STRONG BUY", "BUY")][:5]
     if not top_picks:
         top_picks = candidates[: min(5, len(candidates))]
 
@@ -922,6 +976,14 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(b'{"ok":true}')
             return
 
+        if parsed.path == "/api/shutdown":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"shutdown":true}')
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
+
         return super().do_GET()
 
     def log_message(self, fmt, *args):
@@ -930,6 +992,14 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     http.server.ThreadingHTTPServer.allow_reuse_address = True
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), StockSageHandler)
+    try:
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), StockSageHandler)
+    except OSError:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{PORT}/api/shutdown", timeout=2)
+        except Exception:
+            pass
+        time.sleep(0.5)
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), StockSageHandler)
     print(f"StockSage Quant Pro Server (Nasdaq + CNBC Live Feed) running at http://127.0.0.1:{PORT}", flush=True)
     server.serve_forever()

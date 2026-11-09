@@ -2935,14 +2935,15 @@ function renderWeeklyScanner(data) {
 
   // 3. Render Full Cross-Sectional Ranking Table
   document.getElementById('wkTableBody').innerHTML = (data.rankings || []).map(c => {
-    const actBadge = c.weekly_action.includes('STRONG BUY') ? 'b-green' : c.weekly_action.includes('BUY') ? 'b-blue' : c.weekly_action.includes('AVOID') ? 'b-red' : 'b-gray';
+    const actBadge = c.weekly_action.includes('STRONG BUY') ? 'b-green' : c.weekly_action.includes('BUY') ? 'b-blue' : c.weekly_action.includes('WAIT') ? 'b-yellow' : c.weekly_action.includes('AVOID') ? 'b-red' : 'b-gray';
     const sqBadge = c.squeeze_status === 'FIRED BULL' ? 'b-green' : c.squeeze_status === 'SQUEEZE ON' ? 'b-purple' : 'b-gray';
     const p = c.weekly_plan;
     const piv = c.weekly_pivots;
+    const peTxt = c.pe_ttm != null ? ` · P/E ${c.pe_ttm}x` : '';
     return `
-      <tr style="cursor:pointer" onclick="selectWeeklyTicker('${c.symbol}')">
+      <tr style="cursor:pointer" onclick="selectWeeklyTicker('${c.symbol}')" title="${c.rationale}">
         <td><strong>#${c.rank}</strong></td>
-        <td><strong style="color:var(--accent)">${c.symbol}</strong></td>
+        <td><strong style="color:var(--accent)">${c.symbol}</strong><div style="font-size:9.5px;color:var(--dim)">${c.pe_ttm != null ? 'P/E ' + c.pe_ttm + 'x' : ''}</div></td>
         <td>${f$(c.price)} <span style="color:${c.ret_5d_pct >= 0 ? 'var(--green)' : 'var(--red)'};font-size:11px">(${fpct(c.ret_5d_pct, 1)} 5D)</span></td>
         <td style="font-weight:800;color:${c.weekly_alpha_score >= 60 ? 'var(--green)' : c.weekly_alpha_score <= 40 ? 'var(--red)' : 'var(--yellow)'}">${c.weekly_alpha_score}/100</td>
         <td><span class="badge ${actBadge}">${c.weekly_action}</span></td>
