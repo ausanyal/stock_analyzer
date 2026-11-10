@@ -41,7 +41,20 @@ Dedicated Indian sector presets (**Nifty 50 Leaders**, **Indian IT & Tech**, **N
 
 ---
 
+### 6. 🤖 Quant Copilot Reasoning Chatbot (Zero-Key Multi-Factor Engine + Optional Gemini 2.5 AI)
+Interactive docked reasoning assistant synced in real time with the active stock's OHLCV bars, Hurst regime, Volume Profile (`POC/VAH/VAL`), 1,000-path Monte Carlo percentiles, 5-strategy backtest matrix, and Weekly Alpha Playbook. Ask natural-language questions, run head-to-head ticker comparisons (`AAPL vs MSFT`, `RELIANCE vs TCS`), test custom portfolio capital/stops (`"What if I invest $100,000?"`), or audit `P/E` valuation and `ATR` stretch—with 1-click action chips that drive the chart.
+
+![Quant Copilot Reasoning Chatbot](stock-analyzer/screenshots/quant-copilot-chatbot.png)
+
+---
+
 ## 🚀 Key Features
+
+- **🤖 Quant Copilot Reasoning Chatbot (`💬 Quant Chat`)**:
+  - **Hybrid Architecture**: Works out-of-the-box with zero API key via a deterministic **Multi-Factor Quantitative Reasoning Engine**, and automatically layers **Gemini 2.5 Flash / Pro** conversational reasoning when an API key is configured.
+  - **Head-to-Head Peer Comparisons**: Mention any peer ticker (e.g., *"Compare AAPL vs MSFT"* or *"Compare RELIANCE vs TCS"*) to fetch live telemetry and generate a side-by-side institutional scorecard across Composite Quant Score, Hurst Regime, Sharpe/Sortino, Max Drawdown, Trailing P/E, RSI/ATR Stretch, and 63-day Monte Carlo Win Odds.
+  - **Interactive "What-If" Position & Target Simulator**: Ask *"What if I invest \$50,000?"* or *"What are the odds it reaches \$400?"* to compute custom `1%-Risk` / `Half-Kelly` share counts, stop-loss dollar risk, and empirical Monte Carlo target probabilities $P(S_T \ge K)$.
+  - **Context-Aware Prompt Chips & Action Buttons**: 1-click chips for Verdict Breakdown, Entry/Pullback Timing, Valuation (`P/E`) & `ATR` Stretch Audit, Monte Carlo Tail Risk, Best Backtested Strategy, and Weekly Top 5 Picks—plus inline buttons inside replies to switch charts or scroll to panels.
 
 - **Dual-Market Real-Time Engine (`🇺🇸 US` & `🇮🇳 India NSE/BSE`)**:
   - **US Equities**: Fetches historical OHLCV bars from the Official Nasdaq Historical API (`api.nasdaq.com`) overlaid with real-time intraday quotes and fundamentals (`P/E`, `Market Cap`, `EPS`, `52W High/Low`, `Dividend Yield`) from the CNBC Real-Time Quote API (`quote.cnbc.com`).
