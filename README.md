@@ -1,16 +1,57 @@
 # StockSage Quant Pro 📈
 
-Institutional-grade quantitative stock analysis web application, stochastic simulation suite, `quants.md` systematic strategy backtester, and CLI research engine.
+Institutional-grade quantitative stock analysis web application, Weekly Alpha Recommendations & Cross-Sectional Scanner (`Qlib` / `WorldQuant Alpha#101` / `HRP Risk-Parity`), stochastic Monte Carlo simulation suite, `quants.md` systematic strategy backtester, and CLI research engine supporting both **🇺🇸 US Equities (NASDAQ/NYSE in `$` USD)** and **🇮🇳 Indian Equities (NSE/BSE in `₹` INR)**.
 
-## Features
-- **Interactive Multi-Pane Charting**: TradingView Lightweight Charts v4 with OHLCV candlesticks, EMA 20/50, SMA 200, 20-Day VWAP, Bollinger Bands (20,2), Entry/Stop/Target price lines, RSI (14), and MACD (12,26,9).
-- **Live Market Data Proxy (`server.py`)**: Fetches real-time OHLCV bars from the Official Nasdaq Historical API (`api.nasdaq.com`) and live fundamentals (P/E, Market Cap, EPS, 52W High/Low, Dividend Yield) from the CNBC Real-Time Quote API (`quote.cnbc.com`).
+---
+
+## ✨ Interface Showcase
+
+### 1. 🇺🇸 US Market Institutional Quant Dashboard (`NASDAQ / NYSE`)
+Multi-pane TradingView Lightweight Charts v4 with OHLCV candlesticks, EMA 20/50, SMA 200, 20-Day VWAP, Bollinger Bands (20,2), Volume Point of Control (`POC`), dynamic Entry/Stop/Target overlays, RSI (14), MACD (12,26,9), real-time Quant Risk & Alpha telemetry (`Hurst Exponent`, `Sharpe`, `Sortino`, `Calmar`, `Jensen's Alpha`, `VaR 95%`, `CVaR 95%`, `Half-Kelly`), and an automated **Executive Trade Proposal**.
+
+![US Market Institutional Quant Dashboard](stock-analyzer/screenshots/us-quant-dashboard.png)
+
+---
+
+### 2. 🎯 Weekly Alpha Recommendations & Cross-Sectional Playbook (`Mon–Fri Horizon`)
+Parallel multi-sector scanner ranking universes via **Cross-Sectional Z-Scores (`Qlib` style)** across **Mansfield Relative Strength**, **WorldQuant Formulaic Alpha #101**, **TTM Volatility Squeeze**, **Connors RSI(2)**, **5-Day Merton Jump-Diffusion Monte Carlo**, **Rolling 5-Day Walk-Forward Hit Rate**, **Weekly Floor Pivots (`S1 / P / R1`)**, and a **Valuation (`P/E`) & Short-Term Overextension (`ATR Stretch`) Guardrail**—complete with a **Correlation-Penalized Risk-Parity (`HRP`) Portfolio Basket Allocator**.
+
+![US Weekly Alpha Recommendations & Playbook](stock-analyzer/screenshots/weekly-alpha-playbook.png)
+
+---
+
+### 3. 🇮🇳 India (`NSE / BSE`) Parallel Market Analysis (`₹ INR`)
+One-click **`🇺🇸 US Market` | `🇮🇳 India (NSE)`** header toggle switches the entire platform—live NSE/BSE intraday quotes & fundamentals, `₹` Indian Rupee (`en-IN` lakh/crore) formatting, **NIFTY 50 (`^NSEI`)** beta/alpha/correlation benchmarking, and quick-access Nifty leaders (`RELIANCE`, `TCS`, `HDFCBANK`, `INFY`, `SBIN`, `NIFTY50`).
+
+![India NSE Quant Dashboard](stock-analyzer/screenshots/india-nse-dashboard.png)
+
+---
+
+### 4. 🇮🇳 India Nifty 50 Weekly Alpha Playbook & Risk-Parity Basket (`₹ INR`)
+Dedicated Indian sector presets (**Nifty 50 Leaders**, **Indian IT & Tech**, **Nifty Bank & Financials**, **Infra, Auto & Defence**, **Pharma & FMCG**) with cross-sectional factor ranking vs. **NIFTY 50** and automated `₹` portfolio basket sizing.
+
+![India Weekly Alpha Playbook](stock-analyzer/screenshots/india-weekly-playbook.png)
+
+---
+
+### 5. 🎲 Stochastic Monte Carlo Suite & `quants.md` 5-Strategy Backtester
+1,000-path **Merton Jump-Diffusion**, **GBM**, and **Historical Block Bootstrap** fan charts with a 24-bin terminal price distribution histogram, paired with an out-of-sample backtester comparing 5 canonical `quants.md` systematic strategies net of transaction costs (bps) against Buy & Hold.
+
+![Monte Carlo Simulation & Strategy Backtester](stock-analyzer/screenshots/monte-carlo-backtester.png)
+
+---
+
+## 🚀 Key Features
+
+- **Dual-Market Real-Time Engine (`🇺🇸 US` & `🇮🇳 India NSE/BSE`)**:
+  - **US Equities**: Fetches historical OHLCV bars from the Official Nasdaq Historical API (`api.nasdaq.com`) overlaid with real-time intraday quotes and fundamentals (`P/E`, `Market Cap`, `EPS`, `52W High/Low`, `Dividend Yield`) from the CNBC Real-Time Quote API (`quote.cnbc.com`).
+  - **India Equities (`NSE / BSE`)**: Fetches historical daily candles and live intraday quotes (`regularMarketPrice`, `Day High/Low`, `52W High/Low`, `Trailing P/E`, `Market Cap`, `EPS`, `Dividend Yield`) from the Yahoo Finance India v8 Chart & Quote APIs (`*.NS` / `*.BO` / `^NSEI`) with automatic CNBC India fallback.
+- **Interactive Multi-Pane Charting**:
+  - TradingView Lightweight Charts v4 with OHLCV candlesticks, EMA 20/50, SMA 200, 20-Day VWAP, Bollinger Bands (20,2), Entry/Stop/Target price lines, RSI (14), and MACD (12,26,9).
 - **Multi-Model Stochastic Simulation Suite**:
-  - Merton Jump-Diffusion (fat-tail crash aware)
-  - Geometric Brownian Motion (GBM)
-  - Historical Block Bootstrap (non-parametric)
-  - RiskMetrics EWMA ($\lambda = 0.94$) vs. Equal-Weighted volatility
-  - 24-bin Terminal Price Distribution Histogram, Win Probability ($P(S_T > S_0)$), and 5% Expected Shortfall ($\text{CVaR}_{5\%}$)
+  - Merton Jump-Diffusion (fat-tail crash aware), Geometric Brownian Motion (GBM), and Historical Block Bootstrap (non-parametric).
+  - RiskMetrics EWMA ($\lambda = 0.94$) vs. Equal-Weighted volatility.
+  - 24-bin Terminal Price Distribution Histogram, Win Probability ($P(S_T > S_0)$), and 5% Expected Shortfall ($\text{CVaR}_{5\%}$).
 - **`quants.md` Systematic Strategy Backtester**:
   - Backtests 5 canonical quantitative strategies net of transaction costs/slippage (bps) against Buy & Hold:
     1. Trend EMA 20/50 Crossover + ADX Filter
@@ -19,29 +60,38 @@ Institutional-grade quantitative stock analysis web application, stochastic simu
     4. MACD Momentum + OBV Volume Confirmation
     5. Donchian 20/10 Turtle Breakout
 - **Volume Profile & Granular Bar-by-Bar Microstructure**:
-  - 20-bin Volume Point of Control (`POC`), 70% Value Area High (`VAH`), and Value Area Low (`VAL`)
-  - Candlestick & volume anomaly scanner (Doji, Hammer, Shooting Star, Bullish/Bearish Engulfing, Gaps, $\ge 1.5\times$ Institutional Accumulation/Distribution)
+  - 20-bin Volume Point of Control (`POC`), 70% Value Area High (`VAH`), and Value Area Low (`VAL`).
+  - Candlestick & volume anomaly scanner (Doji, Hammer, Shooting Star, Bullish/Bearish Engulfing, Gaps, $\ge 1.5\times$ Institutional Accumulation/Distribution).
 - **Executive Trade Proposal Engine**:
   - Composite Quant Score (`0–100`), Verdict (`STRONG BUY` / `BUY` / `HOLD` / `SELL` / `STRONG SELL`), Ideal Entry Zone, $1.8\times\text{Wilder ATR}$ Chandelier Stop-Loss, `TP1` ($1.5R$) / `TP2` ($2.5R$) / `TP3` ($4.0R$) targets with Monte Carlo hit odds, Regime-calibrated Holding Horizon, and 1%-Risk / Half-Kelly Position Sizing.
   - Optional Gemini 2.5 Flash / Pro deep equity research synthesis.
-- **Weekly Alpha Recommendations & Cross-Sectional Playbook (Mon–Fri Horizon)**:
-  - Parallel multi-sector universe scanner (`leaders`, `ai_semis`, `momentum`, `defensive`, `etfs`, or custom watchlist).
-  - **Cross-Sectional Z-Score Ranking (`Qlib` style)** combining **Mansfield Relative Strength vs. SPY**, **WorldQuant Formulaic Alpha #101**, **TTM Volatility Squeeze** (Bollinger inside Keltner), **Connors RSI(2)** short-horizon pullback detection, **5-Day Merton Jump-Diffusion Monte Carlo** ($\pm 1\sigma$ weekly expected move cone), **Rolling 5-Day Walk-Forward Validation (`RankIC` hit rate)**, and **Weekly Floor Pivots (`S1, P, R1`)**.
-  - **Correlation-Penalized Risk-Parity (HRP-Style) Weekly Basket Allocator**: Computes the $5 \times 5$ pairwise daily return correlation matrix across the Top 5 Weekly Picks and allocates portfolio capital by inverse volatility and diversification.
+- **Weekly Alpha Recommendations & Cross-Sectional Playbook (`Mon–Fri Horizon`)**:
+  - Parallel multi-sector universe scanner for **US** (`leaders`, `ai_semis`, `momentum`, `defensive`, `etfs`) and **India NSE** (`in_leaders`, `in_it`, `in_banks`, `in_infra_auto`, `in_pharma_fmcg`), plus custom watchlists.
+  - **Cross-Sectional Z-Score Ranking (`Qlib` style)** combining **Mansfield Relative Strength** (vs. `SPY` or `NIFTY 50`), **WorldQuant Formulaic Alpha #101**, **TTM Volatility Squeeze** (Bollinger inside Keltner), **Connors RSI(2)** pullback detection, **5-Day Merton Jump-Diffusion Monte Carlo** ($\pm 1\sigma$ weekly expected move cone), **Rolling 5-Day Walk-Forward Validation (`RankIC` hit rate)**, and **Weekly Floor Pivots (`S1, P, R1`)**.
+  - **Valuation (`P/E`) & Short-Term Overextension (`ATR Stretch`) Guardrail**: Penalizes stretched valuations (`P/E >= 42x`) and short-term overbought/overextended runs (`RSI(14) > 65` or price $> +2.2\text{ ATR}$ above `EMA20`), automatically re-classifying stretched momentum runners as **`⚠️ STRETCHED / DCA ONLY`** and shifting their Ideal Entry Zone to a pullback (`EMA20` / Weekly Pivot `S1`).
+  - **Correlation-Penalized Risk-Parity (`HRP`-Style) Weekly Basket Allocator**: Computes the $5 \times 5$ pairwise daily return correlation matrix across the Top 5 Weekly Picks and allocates portfolio capital (`$` or `₹`) by inverse volatility and diversification.
 
-## Quick Start
+---
+
+## ⚡ Quick Start
 
 ### 1. Run the Web Application
 ```bash
 python3 stock-analyzer/server.py
 ```
-Then open **http://127.0.0.1:8765** in your browser.
+Then open **http://127.0.0.1:8765** in your browser. Use the **`🇺🇸 US Market` | `🇮🇳 India (NSE)`** toggle in the top header to switch markets anytime.
 
-### 2. Run the Command-Line Quant Engine
+### 2. Run the Command-Line Quant Engine (`quant_cli.py`)
 ```bash
-# Single-ticker institutional analysis
-python3 stock-analyzer/quant_cli.py GOOG --range 1y --days 63
+# 🇺🇸 US Single-Ticker Institutional Analysis
+python3 stock-analyzer/quant_cli.py AAPL --market US --range 1y --days 63
 
-# Weekly Top 5 Alpha Picks & Correlation-Penalized Risk-Parity Portfolio Basket
-python3 stock-analyzer/quant_cli.py --weekly --preset leaders --capital 25000
+# 🇮🇳 India (NSE) Single-Ticker Institutional Analysis (in ₹ INR vs NIFTY 50)
+python3 stock-analyzer/quant_cli.py RELIANCE --market IN --range 1y --days 63
+
+# 🇺🇸 US Weekly Top 5 Alpha Picks & Risk-Parity Portfolio Basket ($25,000)
+python3 stock-analyzer/quant_cli.py --weekly --market US --preset leaders --capital 25000
+
+# 🇮🇳 India (NSE) Weekly Top 5 Alpha Picks & Risk-Parity Portfolio Basket (₹5,00,000)
+python3 stock-analyzer/quant_cli.py --weekly --market IN --preset in_leaders --capital 500000
 ```

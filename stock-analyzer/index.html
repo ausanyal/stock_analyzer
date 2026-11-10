@@ -161,7 +161,7 @@
       background: rgba(245,158,11,.18); color: #fbbf24;
       border-color: rgba(245,158,11,.45); box-shadow: 0 1px 4px rgba(0,0,0,.35);
     }
-    .search-wrap { display: flex; gap: 5px; width: 250px; }
+    .search-wrap { display: flex; gap: 5px; width: 210px; flex-shrink: 0; }
     #tickerInput {
       flex: 1; min-width: 0;
       background: var(--bg3); border: 1px solid var(--border);
@@ -2780,7 +2780,7 @@ const MARKET_PRESET_OPTIONS = {
 
 const MARKET_QUICK_TICKERS = {
   US: ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'META', 'SPY'],
-  IN: ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'NIFTY50'],
+  IN: ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'SBIN', 'NIFTY50'],
 };
 
 function switchMarket(mkt) {
@@ -3332,10 +3332,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (S.gemKey) document.getElementById('inlineKey').value = S.gemKey;
 
-  // Default load NVDA + background Weekly Alpha Scan
-  document.getElementById('tickerInput').value = 'NVDA';
-  analyze();
-  setTimeout(runWeeklyScanner, 400);
+  // Default load (supports ?market=IN|US&ticker=SYM&section=weeklyPanel|mcPanel|btPanel)
+  const qsParams = new URLSearchParams(window.location.search);
+  const qMkt = (qsParams.get('market') || 'US').toUpperCase();
+  const qSym = qsParams.get('ticker');
+  const qSec = qsParams.get('section');
+
+  if (qMkt === 'IN') {
+    switchMarket('IN');
+    if (qSym) {
+      document.getElementById('tickerInput').value = qSym.toUpperCase();
+      analyze();
+    }
+  } else {
+    document.getElementById('tickerInput').value = (qSym || 'NVDA').toUpperCase();
+    analyze();
+    setTimeout(runWeeklyScanner, 300);
+  }
+
+  if (qSec) {
+    const scrollToTarget = () => {
+      const el = document.getElementById(qSec);
+      const wrap = document.querySelector('.charts-wrap');
+      if (el && wrap) {
+        el.classList.remove('collapsed');
+        wrap.scrollTop = el.offsetTop - wrap.offsetTop;
+      }
+    };
+    setTimeout(scrollToTarget, 2200);
+    setTimeout(scrollToTarget, 5500);
+  }
 });
 </script>
 </body>
