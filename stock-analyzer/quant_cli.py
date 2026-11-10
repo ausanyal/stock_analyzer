@@ -121,6 +121,66 @@ def calc_atr(candles, p=14):
     return out
 
 
+def calc_kama(closes, er_period=10, fast_p=2, slow_p=30):
+    n = len(closes)
+    kama = [None] * n
+    er_arr = [0.5] * n
+    if n == 0:
+        return kama, er_arr
+    fast_sc = 2.0 / (fast_p + 1)
+    slow_sc = 2.0 / (slow_p + 1)
+    start_idx = min(er_period, n - 1)
+    kama[start_idx] = closes[start_idx]
+    for i in range(start_idx + 1, n):
+        change = abs(closes[i] - closes[i - er_period])
+        vol = sum(abs(closes[j] - closes[j - 1]) for j in range(i - er_period + 1, i + 1))
+        er = (change / vol) if vol > 1e-9 else 0.0
+        er_arr[i] = er
+        sc = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+        kama[i] = kama[i - 1] + sc * (closes[i] - kama[i - 1])
+    return kama, er_arr
+
+
+def calc_supertrend(candles, atrv, mult=2.5):
+    n = len(candles)
+    out = []
+    if not n:
+        return out
+    prev_upper, prev_lower, prev_dir = candles[0]["high"], candles[0]["low"], 1
+    for i, c in enumerate(candles):
+        atr = atrv[i] if atrv[i] is not None else (c["high"] - c["low"])
+        hl2 = 0.5 * (c["high"] + c["low"])
+        b_up = hl2 + mult * atr
+        b_lo = hl2 - mult * atr
+        prev_close = candles[i - 1]["close"] if i > 0 else c["close"]
+        f_up = b_up if (b_up < prev_upper or prev_close > prev_upper) else prev_upper
+        f_lo = b_lo if (b_lo > prev_lower or prev_close < prev_lower) else prev_lower
+        d = prev_dir
+        if prev_dir == 1 and c["close"] < f_lo:
+            d = -1
+        elif prev_dir == -1 and c["close"] > f_up:
+            d = 1
+        out.append({"line": f_lo if d == 1 else f_up, "dir": d})
+        prev_upper, prev_lower, prev_dir = f_up, f_lo, d
+    return out
+
+
+def calc_ehlers_fisher(candles, p=10):
+    out = []
+    val1, fish = 0.0, 0.0
+    for i, c in enumerate(candles):
+        sub = candles[max(0, i - p + 1) : i + 1]
+        hl2s = [0.5 * (x["high"] + x["low"]) for x in sub]
+        max_h, min_l = max(hl2s), min(hl2s)
+        cur = 0.5 * (c["high"] + c["low"])
+        raw = ((cur - min_l) / (max_h - min_l) - 0.5) if max_h > min_l else 0.0
+        val1 = max(-0.999, min(0.999, 0.66 * raw + 0.67 * val1))
+        prev_f = fish
+        fish = 0.5 * math.log((1.0 + val1) / (1.0 - val1)) + 0.5 * prev_f
+        out.append({"fisher": fish, "trigger": prev_f})
+    return out
+
+
 def calc_hurst(closes):
     if len(closes) < 40:
         return 0.5
@@ -234,8 +294,12 @@ def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: floa
     e50 = ema(closes, 50)
     s200 = sma(closes, min(200, int(len(closes) * 0.75)))
     rv = calc_rsi(closes, 14)
+    rv2 = calc_rsi(closes, 2)
     mv = calc_macd(closes)
     atrv = calc_atr(candles, 14)
+    kama, kama_er = calc_kama(closes, 10, 2, 30)
+    supertrend = calc_supertrend(candles, atrv, 2.5)
+    fisher = calc_ehlers_fisher(candles, 10)
     vp = volume_profile(candles)
     hurst = calc_hurst(closes)
     mc = run_monte_carlo(closes, n_paths=1000, n_days=n_days)
@@ -256,31 +320,46 @@ def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: floa
         max_dd = min(max_dd, (c - peak) / peak)
 
     l_rsi = next((v for v in reversed(rv) if v is not None), 50.0)
+    l_rsi2 = next((v for v in reversed(rv2) if v is not None), 50.0)
     l_macd = next((v for v in reversed(mv) if v["hist"] is not None), {"macd": 0, "sig": 0, "hist": 0})
     l_e20 = next((v for v in reversed(e20) if v is not None), price)
     l_e50 = next((v for v in reversed(e50) if v is not None), price)
     l_s200 = next((v for v in reversed(s200) if v is not None), l_e50)
     l_atr = next((v for v in reversed(atrv) if v is not None), price * 0.02)
+    l_kama = next((v for v in reversed(kama) if v is not None), l_e20)
+    l_kama_er = next((v for v in reversed(kama_er) if v is not None), 0.35)
+    l_st = supertrend[-1] if supertrend else {"line": l_e20, "dir": 1}
+    l_fish = fisher[-1] if fisher else {"fisher": 0.0, "trigger": 0.0}
+    last_c = candles[-1]
+    l_ibs = (last_c["close"] - last_c["low"]) / max(last_c["high"] - last_c["low"], 1e-6)
 
     score = 50
     if price > l_e20 > l_e50:
-        score += 14
+        score += 10
     elif price < l_e20 < l_e50:
-        score -= 14
+        score -= 10
+    if l_st["dir"] == 1 and price >= l_kama:
+        score += 5
+    elif l_st["dir"] == -1:
+        score -= 5
     if price > l_s200:
         score += 6
     else:
         score -= 6
     if l_macd["hist"] > 0:
-        score += 7
-    else:
-        score -= 6
-    if 48 <= l_rsi <= 66:
         score += 6
-    elif l_rsi < 33:
+    else:
+        score -= 5
+    if l_fish["fisher"] >= l_fish["trigger"]:
+        score += 3
+    else:
+        score -= 3
+    if 48 <= l_rsi <= 66:
         score += 5
+    elif l_rsi < 35 or (price > l_s200 and l_rsi2 < 15 and l_ibs < 0.28):
+        score += 6
     elif l_rsi > 72:
-        score -= 7
+        score -= 6
     if price >= vp["poc"]:
         score += 6
     else:
@@ -337,10 +416,17 @@ def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: floa
         "max_dd_pct": round(max_dd * 100, 2),
         "technicals": {
             "rsi_14": round(l_rsi, 2),
+            "connors_rsi_2": round(l_rsi2, 2),
+            "ibs": round(l_ibs, 3),
             "macd_hist": round(l_macd["hist"], 4),
             "ema_20": round(l_e20, 2),
             "ema_50": round(l_e50, 2),
             "sma_200": round(l_s200, 2),
+            "kama_10": round(l_kama, 2),
+            "kama_efficiency_ratio": round(l_kama_er, 3),
+            "supertrend_dir": "BULLISH" if l_st["dir"] == 1 else "BEARISH",
+            "supertrend_line": round(l_st["line"], 2),
+            "ehlers_fisher": round(l_fish["fisher"], 3),
             "atr_14": round(l_atr, 2),
         },
         "volume_profile": {k: round(v, 2) for k, v in vp.items()},

@@ -1240,13 +1240,13 @@
         </div>
       </div>
 
-      <!-- 3. QUANTS.MD SYSTEMATIC STRATEGY BACKTESTER -->
+      <!-- 3. QUANTS.MD + INSTITUTIONAL SYSTEMATIC STRATEGY BACKTESTER -->
       <div class="panel" id="btPanel">
         <div class="panel-hdr" onclick="togglePanel('btPanel')">
           <div class="panel-title">
             <span>🧪</span>
-            Systematic Strategy Backtester &amp; Signal Matrix (quants.md)
-            <span class="panel-sub">In-Sample Equity Curves · Net of Slippage &amp; Fees</span>
+            Systematic Strategy Backtester &amp; Walk-Forward Meta-Boss
+            <span class="panel-sub">quants.md + KAMA/SuperTrend · Connors RSI(2) · TTM Squeeze · PEAD Drift · Walk-Forward Ensemble</span>
           </div>
           <span class="panel-chev">▼</span>
         </div>
@@ -1789,6 +1789,118 @@ function calcOBV(candles) {
   return obv;
 }
 
+// Perry Kaufman's Adaptive Moving Average (KAMA 10, 2, 30) & Efficiency Ratio
+function calcKAMA(closes, erPeriod = 10, fastP = 2, slowP = 30) {
+  const n = closes.length;
+  const kama = new Array(n).fill(null);
+  const erArr = new Array(n).fill(0.5);
+  if (n === 0) return { kama, er: erArr };
+  const fastSC = 2 / (fastP + 1);
+  const slowSC = 2 / (slowP + 1);
+  const startIdx = Math.min(erPeriod, n - 1);
+  kama[startIdx] = closes[startIdx];
+  for (let i = startIdx + 1; i < n; i++) {
+    const change = Math.abs(closes[i] - closes[i - erPeriod]);
+    let volatility = 0;
+    for (let j = i - erPeriod + 1; j <= i; j++) {
+      volatility += Math.abs(closes[j] - closes[j - 1]);
+    }
+    const er = volatility > 1e-9 ? change / volatility : 0;
+    erArr[i] = er;
+    const sc = (er * (fastSC - slowSC) + slowSC) ** 2;
+    kama[i] = kama[i - 1] + sc * (closes[i] - kama[i - 1]);
+  }
+  return { kama, er: erArr };
+}
+
+// Wilder ATR SuperTrend (Ratcheting Volatility Floor/Ceiling)
+function calcSuperTrend(candles, atrv, mult = 2.5) {
+  const n = candles.length;
+  const out = new Array(n).fill(null).map(() => ({ line: null, dir: 1, upper: null, lower: null }));
+  if (!n) return out;
+  let prevUpper = candles[0].high, prevLower = candles[0].low, prevDir = 1;
+  for (let i = 0; i < n; i++) {
+    const c = candles[i];
+    const atr = atrv[i] ?? (c.high - c.low);
+    const hl2 = (c.high + c.low) / 2;
+    const basicUpper = hl2 + mult * atr;
+    const basicLower = hl2 - mult * atr;
+    const prevClose = i > 0 ? candles[i - 1].close : c.close;
+
+    const finalUpper = (basicUpper < prevUpper || prevClose > prevUpper) ? basicUpper : prevUpper;
+    const finalLower = (basicLower > prevLower || prevClose < prevLower) ? basicLower : prevLower;
+
+    let dir = prevDir;
+    if (prevDir === 1 && c.close < finalLower) dir = -1;
+    else if (prevDir === -1 && c.close > finalUpper) dir = 1;
+
+    out[i] = {
+      line: dir === 1 ? finalLower : finalUpper,
+      dir,
+      upper: finalUpper,
+      lower: finalLower,
+    };
+    prevUpper = finalUpper;
+    prevLower = finalLower;
+    prevDir = dir;
+  }
+  return out;
+}
+
+// John Ehlers' Digital Signal Processing Fisher Transform (10-Period)
+function calcEhlersFisher(candles, p = 10) {
+  const n = candles.length;
+  const out = new Array(n).fill(null).map(() => ({ fisher: 0, trigger: 0 }));
+  let val1 = 0, fish = 0;
+  for (let i = 0; i < n; i++) {
+    const start = Math.max(0, i - p + 1);
+    let maxH = -Infinity, minL = Infinity;
+    for (let j = start; j <= i; j++) {
+      const hl2 = (candles[j].high + candles[j].low) / 2;
+      if (hl2 > maxH) maxH = hl2;
+      if (hl2 < minL) minL = hl2;
+    }
+    const curHl2 = (candles[i].high + candles[i].low) / 2;
+    const raw = maxH > minL ? ((curHl2 - minL) / (maxH - minL) - 0.5) : 0;
+    val1 = clamp(0.66 * raw + 0.67 * val1, -0.999, 0.999);
+    const prevFish = fish;
+    fish = 0.5 * Math.log((1 + val1) / (1 - val1)) + 0.5 * prevFish;
+    out[i] = { fisher: fish, trigger: prevFish };
+  }
+  return out;
+}
+
+// John Carter's TTM Volatility Squeeze (Bollinger 20,2 inside Keltner 20,1.5 ATR + NR7)
+function calcTTMSqueeze(candles, bbv, e20, atrv, kcMult = 1.5) {
+  const n = candles.length;
+  return candles.map((c, i) => {
+    const b = bbv[i] || {};
+    const mid = e20[i] ?? c.close;
+    const atr = atrv[i] ?? (c.high - c.low);
+    const kcU = mid + kcMult * atr;
+    const kcL = mid - kcMult * atr;
+    const sqOn = b.upper != null && b.upper < kcU && b.lower > kcL;
+
+    // Narrow Range 7 (NR7) compression check
+    const curRng = c.high - c.low;
+    let isNR7 = i >= 6;
+    for (let j = Math.max(0, i - 6); j < i; j++) {
+      if ((candles[j].high - candles[j].low) <= curRng) { isNR7 = false; break; }
+    }
+
+    // 20-bar Donchian midline momentum oscillator
+    const start = Math.max(0, i - 19);
+    let hh = -Infinity, ll = Infinity;
+    for (let j = start; j <= i; j++) {
+      if (candles[j].high > hh) hh = candles[j].high;
+      if (candles[j].low < ll) ll = candles[j].low;
+    }
+    const donMid = (hh + ll) / 2;
+    const mom = c.close - 0.5 * (donMid + mid);
+    return { sqOn, isNR7, kcU, kcL, mom };
+  });
+}
+
 // Hurst Exponent via Rescaled Range (R/S) across multiple lags
 function calcHurst(closes) {
   if (closes.length < 40) return 0.5;
@@ -2037,7 +2149,7 @@ function analyzeMicrostructure(candles) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-//  QUANTS.MD SYSTEMATIC STRATEGY BACKTESTER (5 Canonical Strategies)
+//  CURATED INSTITUTIONAL STRATEGY BACKTESTER (7 Specialists + Meta-Boss)
 // ════════════════════════════════════════════════════════════════════════
 function runStrategyBacktests(candles, costBps = 10, barsPerYear = 252) {
   const n = candles.length;
@@ -2047,102 +2159,29 @@ function runStrategyBacktests(candles, costBps = 10, barsPerYear = 252) {
   const e20 = ema(closes, 20);
   const e50 = ema(closes, 50);
   const s200 = sma(closes, Math.min(200, Math.floor(n * 0.6)));
-  const rv = rsi(closes, 14);
+  const rv14 = rsi(closes, 14);
+  const rv2 = rsi(closes, 2);
   const mv = macd(closes, 12, 26, 9);
   const bbv = bollinger(closes, 20, 2);
+  const atrv = calcATR(candles, 14);
   const adxv = calcADX(candles, 14);
   const obv = calcOBV(candles);
   const obvEma = ema(obv, 20);
+  const { kama, er: kamaER } = calcKAMA(closes, 10, 2, 30);
+  const supertrend = calcSuperTrend(candles, atrv, 2.5);
+  const fisher = calcEhlersFisher(candles, 10);
+  const squeeze = calcTTMSqueeze(candles, bbv, e20, atrv, 1.5);
   const hurst = S.quant?.hurst || 0.5;
 
-  // Strategy signal generators: returns array of positions (1 = Long, 0 = Cash) at bar i
-  const strategies = [
-    {
-      name: '1. Trend EMA 20/50 Cross + ADX',
-      color: '#38bdf8',
-      gen: () => closes.map((_, i) => (e20[i] != null && e50[i] != null && e20[i] > e50[i] && (adxv[i] == null || adxv[i] > 18)) ? 1 : 0),
-    },
-    {
-      name: '2. RSI(14) Mean Reversion + Trend',
-      color: '#22c55e',
-      gen: () => {
-        const pos = new Array(n).fill(0);
-        let inPos = 0;
-        for (let i = 1; i < n; i++) {
-          const r = rv[i];
-          const uptrend = s200[i] == null || closes[i] >= s200[i] * 0.94;
-          if (!inPos && r != null && r < 40 && uptrend) inPos = 1;
-          else if (inPos && r != null && r > 68) inPos = 0;
-          pos[i] = inPos;
-        }
-        return pos;
-      },
-    },
-    {
-      name: `3. Regime-Adaptive Bollinger (H=${hurst.toFixed(2)})`,
-      color: '#a855f7',
-      gen: () => {
-        const pos = new Array(n).fill(0);
-        let inPos = 0;
-        const isTrending = hurst >= 0.50;
-        for (let i = 1; i < n; i++) {
-          const b = bbv[i];
-          if (b.upper == null) continue;
-          if (isTrending) {
-            // Volatility Breakout
-            if (!inPos && closes[i] > b.mid && b.pctB > 0.65) inPos = 1;
-            else if (inPos && closes[i] < b.mid) inPos = 0;
-          } else {
-            // Mean Reversion
-            if (!inPos && closes[i] <= b.lower * 1.01) inPos = 1;
-            else if (inPos && closes[i] >= b.mid) inPos = 0;
-          }
-          pos[i] = inPos;
-        }
-        return pos;
-      },
-    },
-    {
-      name: '4. MACD Momentum + OBV Volume Flow',
-      color: '#f59e0b',
-      gen: () => closes.map((_, i) => {
-        const m = mv[i];
-        return (m.hist != null && m.hist > 0 && obvEma[i] != null && obv[i] >= obvEma[i]) ? 1 : 0;
-      }),
-    },
-    {
-      name: '5. Donchian 20/10 Turtle Breakout',
-      color: '#06b6d4',
-      gen: () => {
-        const pos = new Array(n).fill(0);
-        let inPos = 0;
-        for (let i = 20; i < n; i++) {
-          let hi20 = -Infinity, lo10 = Infinity;
-          for (let j = i - 20; j < i; j++) if (candles[j].high > hi20) hi20 = candles[j].high;
-          for (let j = i - 10; j < i; j++) if (candles[j].low < lo10) lo10 = candles[j].low;
-          if (!inPos && closes[i] > hi20) inPos = 1;
-          else if (inPos && closes[i] < lo10) inPos = 0;
-          pos[i] = inPos;
-        }
-        return pos;
-      },
-    },
-    {
-      name: 'Benchmark: Buy & Hold',
-      color: '#64748b',
-      gen: () => new Array(n).fill(1),
-    },
-  ];
-
-  return strategies.map(st => {
-    const sigs = st.gen();
+  // Helper to evaluate a position array (0/1) with strict zero look-ahead bias
+  const evaluatePositions = (name, color, sigs, meta = {}) => {
     const eq = [1.0];
-    const barRets = [];
+    const barRets = [0];
     let trades = 0, wins = 0, grossWin = 0, grossLoss = 0;
     let entryEq = null;
 
     for (let i = 1; i < n; i++) {
-      const prevPos = sigs[i - 1]; // Strictly no look-ahead bias: signal at i-1 earns return at i
+      const prevPos = sigs[i - 1]; // Signal at i-1 earns return at i
       const rawRet = (closes[i] - closes[i - 1]) / closes[i - 1];
       const turned = sigs[i - 1] !== (i >= 2 ? sigs[i - 2] : 0);
       const cost = turned ? fee : 0;
@@ -2162,14 +2201,15 @@ function runStrategyBacktests(candles, costBps = 10, barsPerYear = 252) {
       }
     }
 
+    const activeRets = barRets.slice(1);
     const totalRet = eq[eq.length - 1] - 1;
     const years = Math.max(n / barsPerYear, 0.1);
     const cagr = Math.pow(Math.max(eq[eq.length - 1], 0.01), 1 / years) - 1;
-    const m = mean(barRets), sd = stdev(barRets, m);
+    const m = mean(activeRets), sd = stdev(activeRets, m);
     const annVol = sd * Math.sqrt(barsPerYear);
     const rfBar = (S.rfRate / 100) / barsPerYear;
     const sharpe = annVol > 0 ? ((m - rfBar) * barsPerYear) / annVol : 0;
-    const downDev = Math.sqrt(mean(barRets.map(r => r < 0 ? r * r : 0))) * Math.sqrt(barsPerYear);
+    const downDev = Math.sqrt(mean(activeRets.map(r => r < 0 ? r * r : 0))) * Math.sqrt(barsPerYear);
     const sortino = downDev > 0 ? ((m - rfBar) * barsPerYear) / downDev : 0;
 
     let pk = eq[0], maxDD = 0;
@@ -2180,8 +2220,15 @@ function runStrategyBacktests(candles, costBps = 10, barsPerYear = 252) {
     }
 
     return {
-      name: st.name,
-      color: st.color,
+      name,
+      shortTag: meta.shortTag || name.split('.')[0],
+      archetype: meta.archetype || 'hybrid',
+      isMetaBoss: !!meta.isMetaBoss,
+      isBenchmark: !!meta.isBenchmark,
+      delegatedTo: meta.delegatedTo || null,
+      color,
+      sigs,
+      barRets,
       liveSignal: sigs[n - 1] === 1 ? 'LONG' : 'CASH',
       totalRet, cagr, sharpe, sortino, maxDD,
       winRate: trades > 0 ? (wins / trades) * 100 : 0,
@@ -2189,7 +2236,264 @@ function runStrategyBacktests(candles, costBps = 10, barsPerYear = 252) {
       trades,
       eq,
     };
-  });
+  };
+
+  // 7 Curated, Orthogonal Specialist Strategies (Merged Best-of-Breed)
+  const specialistDefs = [
+    {
+      // MERGED #1: Kaufman Adaptive Moving Average (KAMA) + Wilder ATR SuperTrend + ADX
+      name: '1. Adaptive Trend (KAMA + SuperTrend + ADX)',
+      shortTag: '#1 KAMA/SuperTrend',
+      archetype: 'trend',
+      color: '#38bdf8',
+      gen: () => {
+        const pos = new Array(n).fill(0);
+        let inPos = 0;
+        for (let i = 1; i < n; i++) {
+          const stDir = supertrend[i]?.dir ?? 1;
+          const km = kama[i] ?? e20[i] ?? closes[i];
+          const er = kamaER[i] ?? 0.3;
+          const adx = adxv[i] ?? 20;
+          if (!inPos && stDir === 1 && closes[i] >= km && (adx > 18 || er >= 0.28)) {
+            inPos = 1;
+          } else if (inPos && (stDir === -1 || closes[i] < km * 0.982)) {
+            inPos = 0;
+          }
+          pos[i] = inPos;
+        }
+        return pos;
+      },
+    },
+    {
+      // CORE #2: Multi-Week Swing Mean Reversion (RSI-14 + SMA200 Secular Floor)
+      name: '2. Swing Mean-Reversion (RSI-14 + SMA200)',
+      shortTag: '#2 Swing RSI-14',
+      archetype: 'meanrev',
+      color: '#22c55e',
+      gen: () => {
+        const pos = new Array(n).fill(0);
+        let inPos = 0;
+        for (let i = 1; i < n; i++) {
+          const r = rv14[i];
+          const floor = s200[i] ?? e50[i];
+          const uptrend = floor == null || closes[i] >= floor * 0.93;
+          if (!inPos && r != null && r < 40 && uptrend) inPos = 1;
+          else if (inPos && r != null && r > 68) inPos = 0;
+          pos[i] = inPos;
+        }
+        return pos;
+      },
+    },
+    {
+      // MERGED #3: Hurst Fractal Bollinger + John Ehlers' Radar Fisher Transform
+      name: `3. Fractal Bollinger + Ehlers Fisher (H=${hurst.toFixed(2)})`,
+      shortTag: '#3 Hurst+Fisher',
+      archetype: 'hybrid',
+      color: '#a855f7',
+      gen: () => {
+        const pos = new Array(n).fill(0);
+        let inPos = 0;
+        const isTrending = hurst >= 0.50;
+        for (let i = 1; i < n; i++) {
+          const b = bbv[i];
+          const f = fisher[i] || { fisher: 0, trigger: 0 };
+          if (b.upper == null) continue;
+          if (isTrending) {
+            if (!inPos && closes[i] > b.mid && (b.pctB > 0.62 || (f.fisher > f.trigger && f.fisher > 0))) inPos = 1;
+            else if (inPos && closes[i] < b.mid && f.fisher < f.trigger) inPos = 0;
+          } else {
+            if (!inPos && (closes[i] <= b.lower * 1.015 || (b.pctB < 0.25 && f.fisher > f.trigger && f.fisher < -0.4))) inPos = 1;
+            else if (inPos && (closes[i] >= b.mid || f.fisher > 1.25)) inPos = 0;
+          }
+          pos[i] = inPos;
+        }
+        return pos;
+      },
+    },
+    {
+      // CORE #4: MACD Momentum + On-Balance Volume Institutional Flow
+      name: '4. MACD Momentum + OBV Volume Flow',
+      shortTag: '#4 MACD+OBV',
+      archetype: 'momentum',
+      color: '#f59e0b',
+      gen: () => closes.map((_, i) => {
+        const m = mv[i];
+        return (m.hist != null && m.hist > 0 && obvEma[i] != null && obv[i] >= obvEma[i]) ? 1 : 0;
+      }),
+    },
+    {
+      // MERGED #5: Volatility Squeeze Breakout (John Carter TTM Squeeze + Donchian 20/10 Turtle)
+      name: '5. Volatility Squeeze Breakout (TTM + Donchian)',
+      shortTag: '#5 TTM Squeeze',
+      archetype: 'breakout',
+      color: '#06b6d4',
+      gen: () => {
+        const pos = new Array(n).fill(0);
+        let inPos = 0;
+        for (let i = 20; i < n; i++) {
+          let hi20 = -Infinity, lo10 = Infinity;
+          for (let j = i - 20; j < i; j++) if (candles[j].high > hi20) hi20 = candles[j].high;
+          for (let j = i - 10; j < i; j++) if (candles[j].low < lo10) lo10 = candles[j].low;
+
+          // Check if volatility was coiled (TTM Squeeze or NR7) in the last 6 bars
+          let coiledRecently = false;
+          for (let j = Math.max(0, i - 6); j <= i; j++) {
+            if (squeeze[j]?.sqOn || squeeze[j]?.isNR7) { coiledRecently = true; break; }
+          }
+          const b = bbv[i] || {};
+          const sq = squeeze[i] || {};
+          const atrStop = (e20[i] ?? closes[i]) - 1.6 * (atrv[i] ?? 0);
+          const trailExit = Math.max(lo10, atrStop);
+
+          if (!inPos && (closes[i] > hi20 || (coiledRecently && b.upper != null && closes[i] > b.upper && sq.mom > 0))) {
+            inPos = 1;
+          } else if (inPos && closes[i] < trailExit) {
+            inPos = 0;
+          }
+          pos[i] = inPos;
+        }
+        return pos;
+      },
+    },
+    {
+      // NEW #6: Larry Connors' RSI(2) + Internal Bar Strength (IBS) Pullback Sniper
+      name: '6. Connors RSI(2) + IBS Dip Sniper',
+      shortTag: '#6 Connors RSI-2',
+      archetype: 'meanrev',
+      color: '#ec4899',
+      gen: () => {
+        const pos = new Array(n).fill(0);
+        const s5 = sma(closes, 5);
+        let inPos = 0, stopPx = 0;
+        for (let i = 5; i < n; i++) {
+          const c = candles[i], prev = candles[i - 1];
+          const r2 = rv2[i] ?? 50;
+          const ibs = (c.close - c.low) / Math.max(c.high - c.low, 1e-6);
+          const floor = s200[i] ?? e50[i];
+          const trendUp = (floor == null || c.close > floor) && (e20[i] == null || e50[i] == null || e20[i] >= e50[i] * 0.985);
+          const belowSma5 = s5[i] == null || c.close < s5[i];
+
+          if (!inPos && trendUp && belowSma5 && ((r2 < 20 && ibs < 0.32) || r2 < 12)) {
+            inPos = 1;
+            stopPx = c.close - 1.8 * (atrv[i] ?? (c.high - c.low));
+          } else if (inPos) {
+            // Canonical Connors sniper exit: first close above prior day's high or 5d SMA, or RSI(2) > 65, or hard ATR stop
+            if (c.close > prev.high || (s5[i] != null && c.close >= s5[i]) || r2 > 65 || c.close < stopPx) {
+              inPos = 0;
+            }
+          }
+          pos[i] = inPos;
+        }
+        return pos;
+      },
+    },
+    {
+      // NEW #7: Institutional Volume-Shock Catalyst Drift (PEAD / Pocket Pivot)
+      name: '7. Volume-Shock Catalyst Drift (PEAD Proxy)',
+      shortTag: '#7 PEAD Vol-Shock',
+      archetype: 'momentum',
+      color: '#14b8a6',
+      gen: () => {
+        const pos = new Array(n).fill(0);
+        let inPos = 0, holdCount = 0, shockStop = 0;
+        for (let i = 12; i < n; i++) {
+          const c = candles[i], prev = candles[i - 1];
+          let vSum = 0;
+          for (let j = i - 12; j < i; j++) vSum += candles[j].volume;
+          const avgV = vSum / 12;
+          const rvol = avgV > 0 ? c.volume / avgV : 1;
+          const ibs = (c.close - c.low) / Math.max(c.high - c.low, 1e-6);
+          const dayRet = (c.close - prev.close) / Math.max(prev.close, 1e-6);
+          const trendOk = e50[i] == null || c.close >= e50[i] * 0.96;
+
+          if (!inPos && rvol >= 1.30 && dayRet >= 0.008 && c.close >= c.open && ibs >= 0.55 && trendOk) {
+            inPos = 1;
+            holdCount = 1;
+            shockStop = c.low - 0.8 * (atrv[i] ?? (c.high - c.low));
+          } else if (inPos) {
+            holdCount++;
+            // Trail stop upward as drift progresses
+            const dynStop = c.close - 1.8 * (atrv[i] ?? (c.high - c.low));
+            if (dynStop > shockStop) shockStop = dynStop;
+            if (c.close < shockStop || holdCount > 15) {
+              inPos = 0;
+              holdCount = 0;
+            }
+          }
+          pos[i] = inPos;
+        }
+        return pos;
+      },
+    },
+  ];
+
+  const specialists = specialistDefs.map(st => evaluatePositions(st.name, st.color, st.gen(), st));
+
+  // ★ WALK-FORWARD ENSEMBLE META-BOSS (Strictly Out-of-Sample Weekly Regime Router)
+  const metaPos = new Array(n).fill(0);
+  let currentDelegate = specialists[0];
+  let activeSpec = specialists[0];
+
+  for (let i = 1; i < n; i++) {
+    // Re-evaluate specialist rankings weekly (every 5 bars) or when flat (no mid-trade whipsaw)
+    const isFlat = i < 2 || metaPos[i - 1] === 0;
+    if (i >= 20 && (i % 5 === 0 || isFlat)) {
+      const winStart = Math.max(1, i - 90);
+      const ranked = specialists.map(sp => {
+        let sumR = 0, sumSq = 0, cnt = 0, activeBars = 0;
+        for (let k = winStart; k < i; k++) {
+          const r = sp.barRets[k] || 0;
+          sumR += r;
+          sumSq += r * r;
+          cnt++;
+          if (sp.sigs[k - 1] === 1) activeBars++;
+        }
+        const mR = cnt > 0 ? sumR / cnt : 0;
+        const sdR = cnt > 1 ? Math.sqrt(Math.max(sumSq / cnt - mR * mR, 1e-10)) : 0.01;
+        const rollSharpe = activeBars >= 2 ? (mR / sdR) * Math.sqrt(barsPerYear) : 0;
+
+        let regimeBonus = 0;
+        if (hurst >= 0.53 && (sp.archetype === 'trend' || sp.archetype === 'breakout' || sp.archetype === 'momentum')) {
+          regimeBonus = 0.20;
+        } else if (hurst <= 0.47 && sp.archetype === 'meanrev') {
+          regimeBonus = 0.20;
+        }
+        return { sp, score: rollSharpe + sumR * 10 + regimeBonus };
+      }).sort((a, b) => b.score - a.score);
+
+      activeSpec = ranked[0].sp;
+      // Ensemble rule: if #1 specialist is CASH, check if #2 and #3 top specialists both signal LONG
+      if (activeSpec.sigs[i] === 1) {
+        metaPos[i] = 1;
+        currentDelegate = activeSpec;
+      } else if (ranked[1]?.sp.sigs[i] === 1 && ranked[2]?.sp.sigs[i] === 1 && ranked[1].score > 0) {
+        metaPos[i] = 1;
+        currentDelegate = ranked[1].sp;
+      } else {
+        metaPos[i] = 0;
+        currentDelegate = activeSpec;
+      }
+    } else {
+      // Follow active delegated specialist before warm-up or while in an open trade
+      metaPos[i] = activeSpec.sigs[i];
+    }
+  }
+
+  const metaBossResult = evaluatePositions(
+    `★ Walk-Forward Meta-Boss (via ${currentDelegate.shortTag})`,
+    '#fbbf24',
+    metaPos,
+    { shortTag: '★ Meta-Boss', archetype: 'ensemble', isMetaBoss: true, delegatedTo: currentDelegate.shortTag }
+  );
+
+  const benchmarkResult = evaluatePositions(
+    'Benchmark: Buy & Hold',
+    '#64748b',
+    new Array(n).fill(1),
+    { shortTag: 'Buy & Hold', archetype: 'benchmark', isBenchmark: true }
+  );
+
+  return [metaBossResult, ...specialists, benchmarkResult];
 }
 
 function drawBacktestCanvas(canvas, results) {
@@ -2231,11 +2535,12 @@ function drawBacktestCanvas(canvas, results) {
     ctx.setLineDash([]);
   }
 
-  // Curves
-  results.forEach(r => {
+  // Curves (Draw specialists first, then Benchmark dashed, then ★ Meta-Boss on top)
+  const ordered = [...results.filter(r => !r.isMetaBoss), ...results.filter(r => r.isMetaBoss)];
+  ordered.forEach(r => {
     ctx.strokeStyle = r.color;
-    ctx.lineWidth = r.name.startsWith('Benchmark') ? 1.5 : 2;
-    if (r.name.startsWith('Benchmark')) ctx.setLineDash([4, 3]);
+    ctx.lineWidth = r.isMetaBoss ? 2.5 : r.isBenchmark ? 1.5 : 1.7;
+    if (r.isBenchmark) ctx.setLineDash([4, 3]);
     ctx.beginPath();
     r.eq.forEach((v, i) => {
       const x = xS(i), y = yS(v);
@@ -2496,9 +2801,10 @@ function buildTradeProposal() {
   const { candles, computed, quant, mcResult, btResults, ticker } = S;
   const last = candles[candles.length - 1];
   const price = last.close;
-  const { e20, e50, s200, vwap, bbv, rv, mv, atrv, adxv, stoch, vp } = computed;
+  const { e20, e50, s200, vwap, bbv, rv, rv2, mv, atrv, adxv, stoch, vp, kama, kamaER, supertrend, fisher, squeeze } = computed;
 
   const lrsi = [...rv].reverse().find(v => v != null) ?? 50;
+  const lrsi2 = [...(rv2 || [])].reverse().find(v => v != null) ?? 50;
   const lmcd = [...mv].reverse().find(m => m.sig != null) || {};
   const le20 = [...e20].reverse().find(v => v != null) ?? price;
   const le50 = [...e50].reverse().find(v => v != null) ?? price;
@@ -2508,18 +2814,32 @@ function buildTradeProposal() {
   const latr = [...atrv].reverse().find(v => v != null) ?? price * 0.02;
   const ladx = [...adxv].reverse().find(v => v != null) ?? 20;
   const lstoch = [...stoch].reverse().find(s => s.k != null) || { k: 50, d: 50 };
+  const lkama = [...(kama || [])].reverse().find(v => v != null) ?? le20;
+  const lkamaER = [...(kamaER || [])].reverse().find(v => v != null) ?? 0.35;
+  const lst = (supertrend && supertrend[supertrend.length - 1]) || { dir: 1, line: le20 };
+  const lfish = (fisher && fisher[fisher.length - 1]) || { fisher: 0, trigger: 0 };
+  const lsq = (squeeze && squeeze[squeeze.length - 1]) || { sqOn: false, isNR7: false, mom: 0 };
+  const prevSq = (squeeze && squeeze[squeeze.length - 2]) || { sqOn: false };
+  const libs = (last.close - last.low) / Math.max(last.high - last.low, 1e-6);
 
   // Multi-factor Quantitative Score (0 to 100)
   let score = 50;
   const catalysts = [], risks = [];
 
-  // 1. Trend Structure (up to ±18 pts)
+  // 1. Trend & Adaptive Structure (EMA 20/50 + KAMA + SuperTrend + SMA200: up to ±20 pts)
   if (price > le20 && le20 > le50) {
-    score += 12;
+    score += 9;
     catalysts.push(`Bullish EMA alignment: Price (${f$(price)}) > EMA20 (${f$(le20)}) > EMA50 (${f$(le50)}).`);
   } else if (price < le20 && le20 < le50) {
-    score -= 12;
+    score -= 9;
     risks.push(`Bearish trend alignment: Price (${f$(price)}) trading below both EMA20 (${f$(le20)}) and EMA50 (${f$(le50)}).`);
+  }
+  if (lst.dir === 1 && price >= lkama) {
+    score += 5;
+    catalysts.push(`Bullish ATR SuperTrend floor (${f$(lst.line)}) & Kaufman KAMA (${f$(lkama)}, Efficiency Ratio ${(lkamaER * 100).toFixed(0)}%) confirm active trend support.`);
+  } else if (lst.dir === -1) {
+    score -= 5;
+    risks.push(`Bearish ATR SuperTrend ceiling (${f$(lst.line)}) caps upside until reclaimed.`);
   }
   if (price > ls200) {
     score += 6;
@@ -2529,23 +2849,34 @@ function buildTradeProposal() {
     risks.push(`Below long-term SMA200 (${f$(ls200)}), signaling macro overhead supply.`);
   }
 
-  // 2. Momentum & Oscillators (up to ±14 pts)
+  // 2. Momentum, Radar & Short-Horizon Mean Reversion (MACD + RSI-14 + Connors RSI-2/IBS + Ehlers Fisher + TTM Squeeze: up to ±16 pts)
   if (lmcd.hist > 0 && lmcd.macd > lmcd.sig) {
-    score += 7;
+    score += 5;
     catalysts.push(`Positive MACD histogram (+${lmcd.hist.toFixed(3)}) indicates accelerating bullish momentum.`);
   } else {
-    score -= 6;
+    score -= 5;
     risks.push(`Negative MACD histogram (${(lmcd.hist || 0).toFixed(3)}) reflects near-term momentum headwinds.`);
   }
 
+  if (lfish.fisher > lfish.trigger && lfish.fisher > -0.5) {
+    score += 3;
+  } else if (lfish.fisher < lfish.trigger && lfish.fisher < 0.5) {
+    score -= 3;
+  }
+
+  if ((prevSq.sqOn && !lsq.sqOn && lsq.mom > 0) || (lsq.sqOn && lsq.mom > 0)) {
+    score += 4;
+    catalysts.push(`TTM Volatility Squeeze (${lsq.sqOn ? 'COILED' : 'FIRED BULL'}) with positive momentum signals imminent volatility expansion.`);
+  }
+
   if (lrsi >= 48 && lrsi <= 66) {
-    score += 6;
-    catalysts.push(`RSI(14) at ${lrsi.toFixed(1)} is in the bullish momentum sweet-spot without overbought exhaustion.`);
-  } else if (lrsi < 33) {
     score += 5;
-    catalysts.push(`RSI(14) deeply oversold at ${lrsi.toFixed(1)}, creating asymmetric mean-reversion bounce potential.`);
+    catalysts.push(`RSI(14) at ${lrsi.toFixed(1)} is in the bullish momentum sweet-spot without overbought exhaustion.`);
+  } else if (lrsi < 35 || (price > ls200 && lrsi2 < 15 && libs < 0.28)) {
+    score += 6;
+    catalysts.push(` Institutional Dip-Sniper Trigger: Connors RSI(2) at ${lrsi2.toFixed(1)} (IBS ${(libs * 100).toFixed(0)}%) / RSI(14) at ${lrsi.toFixed(1)} signals asymmetric mean-reversion bounce potential.`);
   } else if (lrsi > 72) {
-    score -= 7;
+    score -= 6;
     risks.push(`RSI(14) is overbought at ${lrsi.toFixed(1)}, elevating short-term pullback/consolidation risk.`);
   }
 
@@ -2569,17 +2900,21 @@ function buildTradeProposal() {
   }
   if (quant.alphaAnn != null && quant.alphaAnn > 0.03) {
     score += 4;
-    catalysts.push(`Generating +${(quant.alphaAnn * 100).toFixed(1)}% annualized Jensen's Alpha vs. S&P 500 (Beta ${quant.beta?.toFixed(2)}).`);
+    catalysts.push(`Generating +${(quant.alphaAnn * 100).toFixed(1)}% annualized Jensen's Alpha vs. ${benchName()} (Beta ${quant.beta?.toFixed(2)}).`);
   }
 
-  // 5. Systematic Strategy Consensus & Monte Carlo Odds (±10 pts)
-  const activeStrats = btResults.slice(0, 5);
+  // 5. Curated Strategy Suite Consensus & Walk-Forward Meta-Boss (±12 pts)
+  const activeStrats = btResults.filter(s => !s.isBenchmark);
+  const metaBoss = btResults.find(s => s.isMetaBoss);
   const longCount = activeStrats.filter(s => s.liveSignal === 'LONG').length;
-  score += (longCount - 2.5) * 3;
-  if (longCount >= 3) {
-    catalysts.push(`${longCount} of 5 systematic quants.md strategies are actively flashing a LONG signal.`);
+  score += ((longCount / Math.max(activeStrats.length, 1)) - 0.45) * 16;
+  if (metaBoss?.liveSignal === 'LONG') {
+    score += 3;
+    catalysts.push(`Walk-Forward Meta-Boss (${metaBoss.delegatedTo || 'Ensemble'}) is actively LONG (${longCount} of ${activeStrats.length} institutional strategies bullish).`);
+  } else if (longCount >= 4) {
+    catalysts.push(`${longCount} of ${activeStrats.length} systematic strategies are actively flashing a LONG signal.`);
   } else {
-    risks.push(`Only ${longCount} of 5 systematic quants.md strategies are currently LONG (${5 - longCount} in CASH).`);
+    risks.push(`Only ${longCount} of ${activeStrats.length} systematic strategies are currently LONG (${activeStrats.length - longCount} in CASH; Meta-Boss: ${metaBoss?.liveSignal || 'CASH'}).`);
   }
 
   if (mcResult?.stats?.probUp >= 55) {
@@ -2638,16 +2973,16 @@ function buildTradeProposal() {
   const pTP2 = mcResult ? mcResult.stats.probAbove(tp2).toFixed(0) + '% MC odds' : '2.5R';
   const pTP3 = mcResult ? mcResult.stats.probAbove(tp3).toFixed(0) + '% MC odds' : '4.0R';
 
-  // Best backtested strategy
-  const bestBt = [...activeStrats].sort((a, b) => b.sharpe - a.sharpe)[0];
+  // Best backtested specialist strategy
+  const bestBt = [...activeStrats.filter(s => !s.isMetaBoss)].sort((a, b) => b.sharpe - a.sharpe)[0] || activeStrats[0];
 
   const thesis = [
     `📌 EXECUTIVE SUMMARY (${ticker} @ ${f$(price)} — Verdict: ${signal} | Quant Score: ${score}/100):`,
-    `${ticker} is currently operating in a ${quant.regime} regime (Hurst Exponent H = ${quant.hurst.toFixed(2)}) with annualized volatility of ${(quant.annVol * 100).toFixed(1)}% and Daily ATR(14) of ${f$(latr)} (${atrPct.toFixed(2)}%). Across our 5 systematic quants.md strategy backtests, "${bestBt?.name}" achieved the highest risk-adjusted return (Sharpe ${bestBt?.sharpe.toFixed(2)}, Net Return ${fpct((bestBt?.totalRet || 0) * 100, 1)}, Win Rate ${bestBt?.winRate.toFixed(0)}%) and currently signals ${bestBt?.liveSignal}.`,
+    `${ticker} is currently operating in a ${quant.regime} regime (Hurst Exponent H = ${quant.hurst.toFixed(2)}) with annualized volatility of ${(quant.annVol * 100).toFixed(1)}% and Daily ATR(14) of ${f$(latr)} (${atrPct.toFixed(2)}%). Across our 7 curated specialist strategies + Walk-Forward Meta-Boss, "${bestBt?.name}" achieved the highest specialist risk-adjusted return (Sharpe ${bestBt?.sharpe.toFixed(2)}, Net Return ${fpct((bestBt?.totalRet || 0) * 100, 1)}, Win Rate ${bestBt?.winRate.toFixed(0)}%) and currently signals ${bestBt?.liveSignal} (Meta-Boss: ${metaBoss?.liveSignal || 'CASH'} via ${metaBoss?.delegatedTo || 'Ensemble'}).`,
     ``,
     `🎯 ENTRY, EXIT & HOLDING HORIZON PLAN:`,
-    `• Optimal Entry Zone: ${f$(entryLow)} – ${f$(entryHigh)} (anchored to 20d VWAP ${f$(lvwap)} and Volume Profile POC ${f$(vp.poc)}; Value Area spans ${f$(vp.val)} to ${f$(vp.vah)}).`,
-    `• Stop-Loss Invalidation: ${f$(stopLoss)} (${fpct(((stopLoss - price) / price) * 100, 1)} from spot, calibrated via 1.8× Wilder ATR Chandelier protection).`,
+    `• Optimal Entry Zone: ${f$(entryLow)} – ${f$(entryHigh)} (anchored to 20d VWAP ${f$(lvwap)}, KAMA ${f$(lkama)}, and Volume Profile POC ${f$(vp.poc)}; Value Area spans ${f$(vp.val)} to ${f$(vp.vah)}).`,
+    `• Stop-Loss Invalidation: ${f$(stopLoss)} (${fpct(((stopLoss - price) / price) * 100, 1)} from spot, calibrated via 1.8× Wilder ATR Chandelier & SuperTrend ${f$(lst.line)} protection).`,
     `• Profit Targets & Horizon: Hold for ${horizon}. Scale out 1/3 at TP1 ${f$(tp1)} (${pTP1}), 1/3 at Base Target TP2 ${f$(tp2)} (${pTP2}, ${rr.toFixed(2)}:1 R/R), and trail the runner toward TP3 ${f$(tp3)} (${pTP3}).`,
     `• Risk-Managed Sizing: For a ${f$(acct, 0)} portfolio risking ≤1% (${f$(riskDollars, 0)}) constrained by Half-Kelly (${((quant.halfKelly || 0.1) * 100).toFixed(1)}%), allocate ${recShares} shares (${f$(recDollars, 0)} or ${recPct.toFixed(1)}% of capital).`
   ].join('\n');
@@ -2658,6 +2993,9 @@ function buildTradeProposal() {
     pTP1, pTP2, pTP3,
     horizon, horizonSub,
     recShares, recDollars, recPct,
+    shares: recShares,
+    alloc: recDollars,
+    dollarRisk: recShares * perShareRisk,
     catalysts: catalysts.slice(0, 5),
     risks: risks.slice(0, 5),
     thesis,
@@ -2761,11 +3099,16 @@ function updateCharts(candles) {
   const vwap = rollingVWAP(candles, 20);
   const bbv = bollinger(closes, 20, 2);
   const rv = rsi(closes, 14);
+  const rv2 = rsi(closes, 2);
   const mv = macd(closes, 12, 26, 9);
   const atrv = calcATR(candles, 14);
   const adxv = calcADX(candles, 14);
   const stoch = calcStoch(candles, 14, 3);
   const vp = computeVolumeProfile(candles, 20);
+  const { kama, er: kamaER } = calcKAMA(closes, 10, 2, 30);
+  const supertrend = calcSuperTrend(candles, atrv, 2.5);
+  const fisher = calcEhlersFisher(candles, 10);
+  const squeeze = calcTTMSqueeze(candles, bbv, e20, atrv, 1.5);
 
   S.series.ema20.setData(S.ind.ema20 ? candles.map((c, i) => e20[i] != null ? { time: c.time, value: e20[i] } : null).filter(Boolean) : []);
   S.series.ema50.setData(S.ind.ema50 ? candles.map((c, i) => e50[i] != null ? { time: c.time, value: e50[i] } : null).filter(Boolean) : []);
@@ -2792,7 +3135,7 @@ function updateCharts(candles) {
   S.series.macdS.setData(sl);
   S.series.macdH.setData(hl);
 
-  S.computed = { e20, e50, s200, vwap, bbv, rv, mv, atrv, adxv, stoch, vp };
+  S.computed = { e20, e50, s200, vwap, bbv, rv, rv2, mv, atrv, adxv, stoch, vp, kama, kamaER, supertrend, fisher, squeeze };
 }
 
 function updateChartPriceLines(proposal) {
@@ -2870,8 +3213,9 @@ function updateSidebar() {
   ].map(([l, v]) => `<div class="mrow"><span class="ml">${l}</span>${v}</div>`).join('');
 
   // Multi-Factor Technical Signals
-  const { e20, e50, s200, vwap, bbv, rv, mv, atrv, adxv, stoch, vp } = computed;
+  const { e20, e50, s200, vwap, bbv, rv, rv2, mv, atrv, adxv, stoch, vp, kama, kamaER, supertrend, fisher, squeeze } = computed;
   const lrsi = [...rv].reverse().find(v => v != null);
+  const lrsi2 = [...(rv2 || [])].reverse().find(v => v != null);
   const lmcd = [...mv].reverse().find(m => m.sig != null);
   const le20 = [...e20].reverse().find(v => v != null);
   const le50 = [...e50].reverse().find(v => v != null);
@@ -2880,15 +3224,32 @@ function updateSidebar() {
   const latr = [...atrv].reverse().find(v => v != null);
   const ladx = [...adxv].reverse().find(v => v != null);
   const lstoch = [...stoch].reverse().find(s => s.k != null);
+  const lkama = [...(kama || [])].reverse().find(v => v != null);
+  const lkamaER = [...(kamaER || [])].reverse().find(v => v != null);
+  const lst = (supertrend && supertrend[supertrend.length - 1]) || { dir: 1, line: le20 };
+  const lfish = (fisher && fisher[fisher.length - 1]) || { fisher: 0, trigger: 0 };
+  const lsq = (squeeze && squeeze[squeeze.length - 1]) || { sqOn: false, isNR7: false, mom: 0 };
+  const prevSq = (squeeze && squeeze[squeeze.length - 2]) || { sqOn: false };
+  const libs = (last.close - last.low) / Math.max(last.high - last.low, 1e-6);
 
   const rsiSig = lrsi > 70 ? ['Overbought', 'b-red'] : lrsi < 30 ? ['Oversold', 'b-green'] : lrsi >= 52 ? ['Bullish', 'b-green'] : lrsi <= 45 ? ['Bearish', 'b-red'] : ['Neutral', 'b-gray'];
+  const rsi2Sig = (lrsi2 < 15 && libs < 0.28) ? [`Dip Sniper (${lrsi2?.toFixed(0)} · IBS ${(libs * 100).toFixed(0)}%)`, 'b-green'] : lrsi2 > 85 ? [`Extended (${lrsi2?.toFixed(0)})`, 'b-red'] : [`${lrsi2?.toFixed(0) || '—'} · IBS ${(libs * 100).toFixed(0)}%`, 'b-gray'];
   const macdSig = lmcd?.hist > 0 ? ['Bullish +' + lmcd.hist.toFixed(2), 'b-green'] : ['Bearish ' + (lmcd?.hist?.toFixed(2) || ''), 'b-red'];
   const trendSig = le20 > le50 ? ['Golden Cross', 'b-green'] : ['Death Cross', 'b-red'];
+  const stSig = lst.dir === 1 ? [`Bullish (${f$(lst.line)})`, 'b-green'] : [`Bearish (${f$(lst.line)})`, 'b-red'];
+  const kamaSig = last.close >= (lkama || 0) ? [`Above (ER ${((lkamaER || 0) * 100).toFixed(0)}%)`, 'b-blue'] : [`Below (ER ${((lkamaER || 0) * 100).toFixed(0)}%)`, 'b-gray'];
+  const sqSig = (prevSq.sqOn && !lsq.sqOn && lsq.mom > 0) ? ['FIRED BULL', 'b-green'] : lsq.sqOn ? ['SQUEEZE ON', 'b-purple'] : lsq.isNR7 ? ['NR7 COILED', 'b-blue'] : ['Normal', 'b-gray'];
+  const fishSig = lfish.fisher >= lfish.trigger ? [`Bullish (${lfish.fisher >= 0 ? '+' : ''}${lfish.fisher.toFixed(2)})`, 'b-green'] : [`Bearish (${lfish.fisher.toFixed(2)})`, 'b-red'];
   const adxSig = ladx > 25 ? [`Strong (${ladx.toFixed(0)})`, 'b-blue'] : [`Weak (${ladx?.toFixed(0) || '—'})`, 'b-gray'];
 
   document.getElementById('scTech').style.display = '';
   document.getElementById('techContent').innerHTML = `
     <div class="trow"><span class="tl">RSI (14)</span><span class="badge ${rsiSig[1]}">${rsiSig[0]} (${lrsi?.toFixed(1) || '—'})</span></div>
+    <div class="trow"><span class="tl">Connors RSI(2) · IBS</span><span class="badge ${rsi2Sig[1]}">${rsi2Sig[0]}</span></div>
+    <div class="trow"><span class="tl">SuperTrend (2.5× ATR)</span><span class="badge ${stSig[1]}">${stSig[0]}</span></div>
+    <div class="trow"><span class="tl">Kaufman KAMA (10)</span><span class="badge ${kamaSig[1]}">${kamaSig[0]}</span></div>
+    <div class="trow"><span class="tl">TTM Vol Squeeze</span><span class="badge ${sqSig[1]}">${sqSig[0]}</span></div>
+    <div class="trow"><span class="tl">Ehlers Fisher (10)</span><span class="badge ${fishSig[1]}">${fishSig[0]}</span></div>
     <div class="trow"><span class="tl">MACD (12,26,9)</span><span class="badge ${macdSig[1]}">${macdSig[0]}</span></div>
     <div class="trow"><span class="tl">EMA 20 / 50</span><span class="badge ${trendSig[1]}">${trendSig[0]}</span></div>
     <div class="trow"><span class="tl">ADX (14) Trend</span><span class="badge ${adxSig[1]}">${adxSig[0]}</span></div>
@@ -2909,6 +3270,7 @@ function updateSidebar() {
     ['Volume POC (Fair Value)', f$(vp.poc)],
     ['Value Area Low (VAL)', f$(vp.val)],
     ['20-Day VWAP', f$(vwap[vwap.length - 1])],
+    ['Kaufman KAMA / SuperTrend', `${f$(lkama)} / ${f$(lst.line)}`],
     ['EMA 20 / EMA 50', `${f$(le20)} / ${f$(le50)}`],
     ['SMA 200', f$(ls200)],
     ['60-Bar Fib 38.2% / 61.8%', `${f$(fib382)} / ${f$(fib618)}`],
@@ -2944,17 +3306,19 @@ function updateSidebar() {
 
 function renderBacktestsUI(results) {
   drawBacktestCanvas(document.getElementById('btCanvas'), results);
-  const active = results.slice(0, 5);
-  const best = [...active].sort((a, b) => b.sharpe - a.sharpe)[0];
+  const specialists = results.filter(r => !r.isBenchmark && !r.isMetaBoss);
+  const metaBoss = results.find(r => r.isMetaBoss);
+  const best = [...specialists].sort((a, b) => b.sharpe - a.sharpe)[0];
   if (best) {
-    document.getElementById('btWinnerTxt').innerHTML = `Top Risk-Adjusted: <strong style="color:var(--accent)">${best.name}</strong> (Sharpe ${best.sharpe.toFixed(2)}, Signal: <strong>${best.liveSignal}</strong>)`;
+    document.getElementById('btWinnerTxt').innerHTML = `Top Specialist: <strong style="color:var(--accent)">${best.name}</strong> (Sharpe ${best.sharpe.toFixed(2)}, Signal: <strong>${best.liveSignal}</strong>) · Meta-Boss: <strong style="color:var(--yellow)">${metaBoss?.liveSignal || 'CASH'}</strong>`;
   }
 
   document.getElementById('btTableBody').innerHTML = results.map(r => {
     const sigBadge = r.liveSignal === 'LONG' ? 'b-green' : 'b-gray';
+    const rowStyle = r.isMetaBoss ? 'background:rgba(251,191,36,0.06);' : '';
     return `
-      <tr>
-        <td><span class="strat-dot" style="background:${r.color}"></span><strong>${r.name}</strong></td>
+      <tr style="${rowStyle}">
+        <td><span class="strat-dot" style="background:${r.color}"></span><strong style="${r.isMetaBoss ? 'color:var(--yellow)' : ''}">${r.name}</strong></td>
         <td><span class="badge ${sigBadge}">${r.liveSignal}</span></td>
         <td style="color:${r.totalRet >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${fpct(r.totalRet * 100, 1)}</td>
         <td>${fpct(r.cagr * 100, 1)}</td>
@@ -3027,7 +3391,7 @@ async function runAI() {
     const { ticker, candles, quant, mcResult, btResults, proposal, computed } = S;
     const last = candles[candles.length - 1];
     const vp = computed.vp;
-    const bestBt = [...btResults.slice(0, 5)].sort((a, b) => b.sharpe - a.sharpe)[0];
+    const bestBt = [...btResults.filter(b => !b.isBenchmark)].sort((a, b) => b.sharpe - a.sharpe)[0] || btResults[0];
 
     const prompt = `You are a Managing Director of Quantitative Strategy & Equity Research at an elite institutional fund.
 Synthesize the following verified quantitative telemetry for ${ticker} and return ONLY a raw valid JSON object (no markdown fences).
@@ -4360,7 +4724,7 @@ async function buildQuantReasoningReply(question) {
   const vp = S.computed.vp;
   const mc = S.mcResult;
   const bts = S.btResults || [];
-  const bestBt = [...bts.slice(0, 5)].sort((a, b) => b.sharpe - a.sharpe)[0];
+  const bestBt = [...bts.filter(b => !b.isBenchmark)].sort((a, b) => b.sharpe - a.sharpe)[0] || bts[0];
   const bLbl = benchName();
   const acct = parseFloat(document.getElementById('acctSize').value) || (S.market === 'IN' ? 500000 : 25000);
 
@@ -4619,8 +4983,9 @@ async function buildQuantReasoningReply(question) {
     };
   }
 
-  // 6. SYSTEMATIC STRATEGY BACKTESTER (QUANTS.MD)
-  if (/\b(strategy|strategies|backtest|backtester|quants\.md|crossover|bollinger|donchian|turtle|mean reversion)\b/i.test(qLower)) {
+  // 6. SYSTEMATIC STRATEGY BACKTESTER (QUANTS.MD + WALK-FORWARD META-BOSS)
+  if (/\b(strategy|strategies|backtest|backtester|quants\.md|crossover|bollinger|donchian|turtle|mean reversion|meta-?boss|kama|supertrend|connors|pead|fisher)\b/i.test(qLower)) {
+    const metaBoss = bts.find(r => r.isMetaBoss);
     const rowsHtml = bts.map(r => `
       <tr>
         <td><strong>${r.name}</strong></td>
@@ -4633,17 +4998,17 @@ async function buildQuantReasoningReply(question) {
     return {
       html: `
         <h4>🧪 Systematic Strategy Backtest Audit (${sym} · Net of Slippage)</h4>
-        <p>Because ${sym} exhibits a Hurst Exponent of <code>H = ${q.hurst.toFixed(2)} (${q.regime})</code>, <strong>${bestBt?.name || 'Trend Following'}</strong> achieves the highest risk-adjusted Sharpe ratio (<strong>${bestBt?.sharpe.toFixed(2)}</strong>) with a live signal of <strong>${bestBt?.liveSignal}</strong>:</p>
+        <p>Because ${sym} exhibits a Hurst Exponent of <code>H = ${q.hurst.toFixed(2)} (${q.regime})</code>, <strong>${bestBt?.name || 'Trend Following'}</strong> achieves the highest risk-adjusted Sharpe ratio (<strong>${bestBt?.sharpe.toFixed(2)}</strong>) with a live signal of <strong>${bestBt?.liveSignal}</strong>, while the <strong>Walk-Forward Meta-Boss</strong> is currently <strong>${metaBoss?.liveSignal || 'CASH'} (${metaBoss?.delegatedTo || 'Ensemble'})</strong>:</p>
         <table class="chat-kv-table">
           <tr><th>Strategy</th><th>Live Signal</th><th>Net Return</th><th>Sharpe</th><th>Win%</th></tr>
           ${rowsHtml}
         </table>
         <p><strong>Regime Insight:</strong> ${
           q.hurst > 0.55
-            ? `With <code>H = ${q.hurst.toFixed(2)} &gt; 0.55</code>, ${sym}'s returns display positive autocorrelation (momentum persistence). Trend-following strategies (EMA 20/50 + ADX and Donchian Breakouts) capture multi-week runners without premature exits.`
+            ? `With <code>H = ${q.hurst.toFixed(2)} &gt; 0.55</code>, ${sym}'s returns display positive autocorrelation (momentum persistence). Adaptive Trend (KAMA + SuperTrend), Volatility Squeeze Breakouts, and PEAD Volume-Shock Drift capture multi-week runners without premature exits.`
             : q.hurst < 0.45
-              ? `With <code>H = ${q.hurst.toFixed(2)} &lt; 0.45</code>, ${sym} mean-reverts rapidly. Buying RSI/Bollinger pullbacks near Value Area Low (${f$(vp.val)}) outperforms breakout chasing.`
-              : `With <code>H = ${q.hurst.toFixed(2)}</code> near 0.50, combining trend filters (SMA 200) with pullback entries yields the best profit factor.`
+              ? `With <code>H = ${q.hurst.toFixed(2)} &lt; 0.45</code>, ${sym} mean-reverts rapidly. Buying Swing RSI(14) or Connors RSI(2)+IBS pullbacks near Value Area Low (${f$(vp.val)}) outperforms breakout chasing.`
+              : `With <code>H = ${q.hurst.toFixed(2)}</code> near 0.50, letting the Walk-Forward Meta-Boss dynamically switch between KAMA/SuperTrend and Connors RSI(2)/Swing RSI(14) yields the best profit factor.`
         }</p>
       `,
       actions: [
@@ -4727,7 +5092,7 @@ async function callGeminiChatWithTelemetry(question) {
   const q = S.quant;
   const vp = S.computed.vp;
   const mc = S.mcResult;
-  const bestBt = [...(S.btResults || []).slice(0, 5)].sort((a, b) => b.sharpe - a.sharpe)[0];
+  const bestBt = [...(S.btResults || []).filter(b => !b.isBenchmark)].sort((a, b) => b.sharpe - a.sharpe)[0];
   const wkTop = (S.weeklyData?.top_picks || []).map(c => `#${c.rank} ${c.symbol} (${c.weekly_alpha_score}/100 ${c.weekly_action}, Setup: ${c.setup_type}, P/E: ${c.pe_ttm ?? 'N/A'})`).join('; ');
 
   const sysContext = `You are the StockSage Quant Pro Copilot, an elite institutional quantitative analyst.

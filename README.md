@@ -34,8 +34,8 @@ Dedicated Indian sector presets (**Nifty 50 Leaders**, **Indian IT & Tech**, **N
 
 ---
 
-### 5. 🎲 Stochastic Monte Carlo Suite & `quants.md` 5-Strategy Backtester
-1,000-path **Merton Jump-Diffusion**, **GBM**, and **Historical Block Bootstrap** fan charts with a 24-bin terminal price distribution histogram, paired with an out-of-sample backtester comparing 5 canonical `quants.md` systematic strategies net of transaction costs (bps) against Buy & Hold.
+### 5. 🎲 Stochastic Monte Carlo Suite & Walk-Forward Strategy Backtester (`quants.md` + Institutional Suite)
+1,000-path **Merton Jump-Diffusion**, **GBM**, and **Historical Block Bootstrap** fan charts with a 24-bin terminal price distribution histogram, paired with an out-of-sample backtester comparing **7 curated orthogonal specialist strategies + a Walk-Forward Ensemble Meta-Boss** net of transaction costs (bps) against Buy & Hold.
 
 ![Monte Carlo Simulation & Strategy Backtester](stock-analyzer/screenshots/monte-carlo-backtester.png)
 
@@ -70,13 +70,16 @@ Interactive docked reasoning assistant synced in real time with the active stock
   - Merton Jump-Diffusion (fat-tail crash aware), Geometric Brownian Motion (GBM), and Historical Block Bootstrap (non-parametric).
   - RiskMetrics EWMA ($\lambda = 0.94$) vs. Equal-Weighted volatility.
   - 24-bin Terminal Price Distribution Histogram, Win Probability ($P(S_T > S_0)$), and 5% Expected Shortfall ($\text{CVaR}_{5\%}$).
-- **`quants.md` Systematic Strategy Backtester**:
-  - Backtests 5 canonical quantitative strategies net of transaction costs/slippage (bps) against Buy & Hold:
-    1. Trend EMA 20/50 Crossover + ADX Filter
-    2. RSI(14) Mean Reversion + SMA 200 Filter
-    3. Regime-Adaptive Bollinger Bands (switches between Breakout and Reversion using the Hurst Exponent $H$)
-    4. MACD Momentum + OBV Volume Confirmation
-    5. Donchian 20/10 Turtle Breakout
+- **Curated Institutional Strategy Backtester & Walk-Forward Meta-Boss (`quants.md` + Next-Gen Suite)**:
+  - Backtests **7 orthogonal specialist strategies + 1 dynamic Walk-Forward Ensemble Meta-Boss** net of transaction costs/slippage (bps) against Buy & Hold:
+    - **`★ Walk-Forward Meta-Boss (Ensemble Router)`**: Strictly out-of-sample rolling 90-bar tournament that dynamically delegates to the top risk-adjusted specialist (or Top-2 specialist consensus) aligned with the active Hurst regime $H$.
+    1. **Adaptive Trend (`Kaufman KAMA + Wilder ATR SuperTrend + ADX`)**: Merges fixed EMA crossovers with Perry Kaufman's Efficiency-Ratio Adaptive Moving Average (`KAMA 10,2,30`) and a $2.5\times\text{ATR}$ SuperTrend floor to eliminate sideways whipsaws.
+    2. **Swing Mean-Reversion (`RSI-14 + SMA 200 Floor`)**: Captures multi-week oversold swings in intact secular uptrends.
+    3. **Fractal Regime Bollinger + Ehlers Fisher (`Hurst H + Radar DSP`)**: Combines Hurst regime-switching Bollinger Bands with John Ehlers' zero-lag Gaussian Fisher Transform.
+    4. **MACD Momentum + OBV Volume Flow**: Requires simultaneous price acceleration and cumulative institutional volume confirmation.
+    5. **Volatility Squeeze Breakout (`TTM Squeeze + NR7 + Donchian 20/10`)**: Upgrades 1983 Turtle Breakouts by requiring Bollinger-inside-Keltner volatility compression (`TTM Squeeze`) or Narrowest-Range-7 (`NR7`) coiling before breakout expansion.
+    6. **Connors `RSI(2) + IBS` Dip Sniper**: Ultra-fast 2-to-5 day pullback sniper (`RSI(2) < 20` & Internal Bar Strength `IBS < 0.32` above `SMA 200`, exiting on the first close above prior high or `SMA 5`).
+    7. **Volume-Shock Catalyst Drift (`PEAD / Pocket Pivot`)**: Captures 15-day post-catalyst institutional accumulation waves (`RVOL >= 1.3x` breakaway bars closing in the top 45% of their range).
 - **Volume Profile & Granular Bar-by-Bar Microstructure**:
   - 20-bin Volume Point of Control (`POC`), 70% Value Area High (`VAH`), and Value Area Low (`VAL`).
   - Candlestick & volume anomaly scanner (Doji, Hammer, Shooting Star, Bullish/Bearish Engulfing, Gaps, $\ge 1.5\times$ Institutional Accumulation/Distribution).
