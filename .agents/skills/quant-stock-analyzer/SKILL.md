@@ -8,16 +8,22 @@ description: Institutional quantitative stock analysis, Weekly Alpha Recommendat
 When the user asks you to analyze any stock ticker, generate **weekly stock recommendations**, simulate its price path, inspect its bars, or recommend whether to buy/sell/hold with an entry point and holding horizon:
 
 ## Step 1: Execute the Quantitative Telemetry Engine
-- **Single-Ticker Deep Dive**:
+- **Single-Ticker Deep Dive (US or India NSE)**:
   ```bash
-  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py <TICKER> --range 1y --days 63
+  # US Equity (NASDAQ/NYSE in USD $)
+  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py NVDA --market US --range 1y --days 63
+  # Indian Equity (NSE/BSE in INR ₹)
+  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py RELIANCE --market IN --range 1y --days 63
   ```
 - **Weekly Top Picks & Cross-Sectional Alpha Scanner (Mon–Fri Playbook)**:
   ```bash
-  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py --weekly --preset leaders --capital 25000
+  # US Weekly Picks (benchmarked vs SPY)
+  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py --weekly --market US --preset leaders --capital 25000
+  # India NSE Weekly Picks (benchmarked vs NIFTY 50)
+  python3 /Users/aubins/Desktop/personal/Aubin/Coding/stock-analyzer/quant_cli.py --weekly --market IN --preset in_leaders --capital 500000
   ```
-  *(Supported `--preset` values: `leaders`, `ai_semis`, `momentum`, `defensive`, `etfs`, or pass custom tickers like `NVDA,AMD,GOOG,AVGO --weekly`)*
-*(Note: Requires outbound network access to Official Nasdaq & CNBC APIs; run with `BypassSandbox: true` if sandboxed network is restricted).*
+  *(Supported US `--preset` values: `leaders`, `ai_semis`, `momentum`, `defensive`, `etfs`; Supported India `--preset` values: `in_leaders`, `in_it`, `in_banks`, `in_infra_auto`, `in_pharma_fmcg`, or pass custom tickers)*
+*(Note: Requires outbound network access to Nasdaq/CNBC for US and Moneycontrol/Groww NSE APIs for India; run with `BypassSandbox: true` if sandboxed network is restricted).*
 
 ## Step 2: Enforce `quants.md` Institutional Research Standards
 Always evaluate and report across these five quantitative pillars:

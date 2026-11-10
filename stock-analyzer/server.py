@@ -31,6 +31,9 @@ HEADERS = {
 _CACHE_LOCK = threading.Lock()
 _QUOTE_CACHE = {}
 _BARS_CACHE = {}
+_INDIA_FUND_CACHE = {}
+
+IST_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 WEEKLY_PRESETS = {
     "leaders": ["NVDA", "AAPL", "MSFT", "GOOG", "AMZN", "META", "AMD", "AVGO", "TSLA", "NFLX", "JPM", "V", "LLY", "UNH", "COST", "XOM"],
@@ -39,6 +42,70 @@ WEEKLY_PRESETS = {
     "defensive": ["JPM", "UNH", "LLY", "JNJ", "PG", "KO", "WMT", "COST", "XOM", "CVX", "CAT", "V"],
     "etfs": ["SPY", "QQQ", "IWM", "SMH", "XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "GLD", "TLT"],
 }
+
+INDIA_WEEKLY_PRESETS = {
+    "in_leaders": ["RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "INFY", "BHARTIARTL", "SBIN", "LT", "ITC", "SUNPHARMA", "M&M", "AXISBANK", "BAJFINANCE", "NTPC", "MARUTI", "TITAN"],
+    "in_it": ["TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM", "PERSISTENT", "COFORGE", "MPHASIS", "KPITTECH", "TATAELXSI", "OFSS"],
+    "in_banks": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "BAJFINANCE", "BAJAJFINSV", "INDUSINDBK", "BANKBARODA", "PNB", "CHOLAFIN", "PFC"],
+    "in_infra_auto": ["LT", "M&M", "MARUTI", "BAJAJ-AUTO", "EICHERMOT", "TVSMOTOR", "HAL", "BEL", "NTPC", "POWERGRID", "ADANIPORTS", "ULTRACEMCO"],
+    "in_pharma_fmcg": ["SUNPHARMA", "CIPLA", "DRREDDY", "DIVISLAB", "APOLLOHOSP", "LUPIN", "ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA", "TITAN", "TRENT"],
+}
+
+INDIA_INDEX_MAP = {
+    "NIFTY50": ("in;NSX", "NIFTY 50 Index"),
+    "BANKNIFTY": ("in;nbx", "NIFTY Bank Index"),
+    "SENSEX": ("in;SEN", "BSE SENSEX Index"),
+}
+
+INDIA_COMPANY_SLUGS = {
+    "RELIANCE": ("reliance-industries-ltd", "Reliance Industries Ltd."),
+    "TCS": ("tata-consultancy-services-ltd", "Tata Consultancy Services Ltd."),
+    "HDFCBANK": ("hdfc-bank-ltd", "HDFC Bank Ltd."),
+    "ICICIBANK": ("icici-bank-ltd", "ICICI Bank Ltd."),
+    "INFY": ("infosys-ltd", "Infosys Ltd."),
+    "BHARTIARTL": ("bharti-airtel-ltd", "Bharti Airtel Ltd."),
+    "SBIN": ("state-bank-of-india", "State Bank of India"),
+    "LT": ("larsen-toubro-ltd", "Larsen & Toubro Ltd."),
+    "ITC": ("itc-ltd", "ITC Ltd."),
+    "SUNPHARMA": ("sun-pharmaceutical-industries-ltd", "Sun Pharmaceutical Industries Ltd."),
+    "M&M": ("mahindra-mahindra-ltd", "Mahindra & Mahindra Ltd."),
+    "AXISBANK": ("axis-bank-ltd", "Axis Bank Ltd."),
+    "BAJFINANCE": ("bajaj-finance-ltd", "Bajaj Finance Ltd."),
+    "NTPC": ("ntpc-ltd", "NTPC Ltd."),
+    "MARUTI": ("maruti-suzuki-india-ltd", "Maruti Suzuki India Ltd."),
+    "TITAN": ("titan-company-ltd", "Titan Company Ltd."),
+    "TRENT": ("trent-ltd", "Trent Ltd."),
+    "HAL": ("hindustan-aeronautics-ltd", "Hindustan Aeronautics Ltd."),
+    "BEL": ("bharat-electronics-ltd", "Bharat Electronics Ltd."),
+    "TATAMOTORS": ("tata-motors-ltd", "Tata Motors Ltd."),
+    "TATASTEEL": ("tata-steel-ltd", "Tata Steel Ltd."),
+    "WIPRO": ("wipro-ltd", "Wipro Ltd."),
+    "HCLTECH": ("hcl-technologies-ltd", "HCL Technologies Ltd."),
+    "KOTAKBANK": ("kotak-mahindra-bank-ltd", "Kotak Mahindra Bank Ltd."),
+    "ULTRACEMCO": ("ultratech-cement-ltd", "UltraTech Cement Ltd."),
+    "ADANIENT": ("adani-enterprises-ltd", "Adani Enterprises Ltd."),
+    "ADANIPORTS": ("adani-ports-and-special-economic-zone-ltd", "Adani Ports & SEZ Ltd."),
+    "POWERGRID": ("power-grid-corporation-of-india-ltd", "Power Grid Corp. of India Ltd."),
+    "BAJAJ-AUTO": ("bajaj-auto-ltd", "Bajaj Auto Ltd."),
+    "EICHERMOT": ("eicher-motors-ltd", "Eicher Motors Ltd."),
+    "HINDUNILVR": ("hindustan-unilever-ltd", "Hindustan Unilever Ltd."),
+    "NESTLEIND": ("nestle-india-ltd", "Nestle India Ltd."),
+    "ASIANPAINT": ("asian-paints-ltd", "Asian Paints Ltd."),
+    "PFC": ("power-finance-corporation-ltd", "Power Finance Corporation Ltd."),
+    "PNB": ("punjab-national-bank", "Punjab National Bank"),
+}
+
+
+def normalize_india_symbol(sym: str) -> str:
+    s = sym.upper().strip()
+    s = re.sub(r"\.(NS|BO)$", "", s)
+    if s in ("^NSEI", "NIFTY", "NIFTY 50", "NIFTY_50", "NIFTY50"):
+        return "NIFTY50"
+    if s in ("^BSESN", "BSE SENSEX", "SENSEX"):
+        return "SENSEX"
+    if s in ("^NSEBANK", "NIFTY BANK", "BANKNIFTY"):
+        return "BANKNIFTY"
+    return s
 
 
 def parse_num(val):
@@ -154,20 +221,252 @@ def fetch_nasdaq_bars(sym: str, rng: str) -> list:
     return []
 
 
-def build_chart_payload(sym: str, rng: str, intv: str) -> dict:
-    meta = fetch_cnbc_quote(sym)
-    bars = fetch_nasdaq_bars(sym, rng)
+def fetch_india_fundamentals(norm_sym: str) -> dict:
+    now = time.time()
+    with _CACHE_LOCK:
+        cached = _INDIA_FUND_CACHE.get(norm_sym)
+        if cached and (now - cached["ts"] < 3600.0):
+            return dict(cached["data"])
+
+    search_id = None
+    long_name = norm_sym
+    if norm_sym in INDIA_COMPANY_SLUGS:
+        search_id, long_name = INDIA_COMPANY_SLUGS[norm_sym]
+    else:
+        try:
+            s_url = f"https://groww.in/v1/api/search/v1/entity?app=false&entity_type=Stocks&page=0&q={urllib.parse.quote(norm_sym)}&size=20"
+            req = urllib.request.Request(s_url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=6) as r:
+                sd = json.loads(r.read().decode("utf-8"))
+            items = sd.get("content", [])
+            for it in items:
+                if (it.get("nse_scrip_code") or "").upper() == norm_sym:
+                    search_id = it.get("search_id")
+                    long_name = it.get("title") or it.get("company_short_name") or norm_sym
+                    break
+            if not search_id and items:
+                search_id = items[0].get("search_id")
+                long_name = items[0].get("title") or items[0].get("company_short_name") or norm_sym
+        except Exception:
+            pass
+
+    out = {"longName": long_name, "shortName": long_name}
+    if search_id:
+        try:
+            c_url = f"https://groww.in/v1/api/stocks_data/v1/company/search_id/{urllib.parse.quote(search_id)}?page=0&size=1"
+            req = urllib.request.Request(c_url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=6) as r:
+                cd = json.loads(r.read().decode("utf-8"))
+            hdr = cd.get("header") or {}
+            if hdr.get("displayName"):
+                out["longName"] = hdr["displayName"]
+                out["shortName"] = hdr.get("shortName") or hdr["displayName"]
+            f_map = {}
+            for f in cd.get("fundamentals") or []:
+                k = f.get("name") or f.get("shortName")
+                if k:
+                    f_map[k] = f.get("value")
+            out["trailingPE"] = parse_num(f_map.get("P/E Ratio(TTM)"))
+            out["industryPE"] = parse_num(f_map.get("Industry P/E"))
+            out["marketCapStr"] = f_map.get("Market Cap") or "N/A"
+            out["dividendYield"] = parse_num(f_map.get("Dividend Yield"))
+            out["eps"] = parse_num(f_map.get("EPS(TTM)"))
+            out["pbRatio"] = parse_num(f_map.get("P/B Ratio"))
+            out["roe"] = parse_num(f_map.get("ROE"))
+        except Exception:
+            pass
+
+    with _CACHE_LOCK:
+        _INDIA_FUND_CACHE[norm_sym] = {"ts": now, "data": out}
+    return dict(out)
+
+
+def fetch_india_quote(sym: str) -> dict:
+    norm_sym = normalize_india_symbol(sym)
+    cache_key = "IN:" + norm_sym
+    now = time.time()
+    with _CACHE_LOCK:
+        cached = _QUOTE_CACHE.get(cache_key)
+        if cached and (now - cached["ts"] < 12.0):
+            return dict(cached["meta"])
+
+    if norm_sym in INDIA_INDEX_MAP:
+        _, idx_name = INDIA_INDEX_MAP[norm_sym]
+        meta = {
+            "symbol": norm_sym,
+            "longName": idx_name,
+            "shortName": idx_name,
+            "exchangeName": "NSE INDIA INDEX",
+            "instrumentType": "INDEX",
+            "currency": "INR",
+            "market": "IN",
+            "marketCapStr": "N/A",
+        }
+        return meta
+
+    fund = fetch_india_fundamentals(norm_sym)
+    meta = {
+        "symbol": norm_sym,
+        "longName": fund.get("longName") or norm_sym,
+        "shortName": fund.get("shortName") or norm_sym,
+        "exchangeName": "NSE INDIA",
+        "instrumentType": "EQUITY",
+        "currency": "INR",
+        "market": "IN",
+        "trailingPE": fund.get("trailingPE"),
+        "industryPE": fund.get("industryPE"),
+        "forwardPE": None,
+        "marketCapStr": fund.get("marketCapStr") or "N/A",
+        "beta": None,
+        "dividendYield": fund.get("dividendYield"),
+        "dividendAmount": None,
+        "eps": fund.get("eps"),
+    }
+    try:
+        url = f"https://groww.in/v1/api/stocks_data/v1/tr_live_prices/exchange/NSE/segment/CASH/{urllib.parse.quote(norm_sym)}/latest"
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=7) as r:
+            q = json.loads(r.read().decode("utf-8"))
+        ts_ms = q.get("tsInMillis")
+        last_time_str = ""
+        if ts_ms:
+            dt_ist = datetime.datetime.fromtimestamp(float(ts_ms) / 1000.0, IST_TZ)
+            last_time_str = dt_ist.strftime("%Y-%m-%dT%H:%M:%S+0530")
+        meta.update({
+            "regularMarketPrice": parse_num(q.get("ltp")),
+            "previousClose": parse_num(q.get("close")),
+            "change": parse_num(q.get("dayChange")),
+            "changePct": parse_num(q.get("dayChangePerc")),
+            "open": parse_num(q.get("open")),
+            "dayHigh": parse_num(q.get("high")),
+            "dayLow": parse_num(q.get("low")),
+            "regularMarketVolume": parse_num(q.get("volume")),
+            "lastTime": last_time_str,
+            "realTime": "true",
+            "fiftyTwoWeekHigh": parse_num(q.get("yearHighPrice")),
+            "fiftyTwoWeekLow": parse_num(q.get("yearLowPrice")),
+        })
+        with _CACHE_LOCK:
+            _QUOTE_CACHE[cache_key] = {"ts": now, "meta": meta}
+    except Exception:
+        pass
+    return dict(meta)
+
+
+def fetch_india_bars(sym: str, rng: str) -> list:
+    norm_sym = normalize_india_symbol(sym)
+    cache_key = ("IN:" + norm_sym, rng)
+    now = time.time()
+    with _CACHE_LOCK:
+        cached = _BARS_CACHE.get(cache_key)
+        if cached and (now - cached["ts"] < 180.0):
+            return [dict(b) for b in cached["bars"]]
+
+    days_map = {"1mo": 35, "3mo": 95, "6mo": 185, "1y": 366, "2y": 732, "5y": 1825}
+    days = days_map.get(rng, 366)
+    countback = max(35, int(days * 0.75))
+    to_ts = int(now) + 86400
+    from_ts = int(now) - days * 86400
+
+    # 1. Primary: Moneycontrol TradingView UDF History API (NSE Equities & Indices)
+    try:
+        if norm_sym in INDIA_INDEX_MAP:
+            mc_sym = INDIA_INDEX_MAP[norm_sym][0]
+            url = (
+                f"https://priceapi.moneycontrol.com/techCharts/indianMarket/index/history"
+                f"?symbol={urllib.parse.quote(mc_sym)}&resolution=1D&from={from_ts}&to={to_ts}&countback={countback}"
+            )
+        else:
+            url = (
+                f"https://priceapi.moneycontrol.com/techCharts/indianMarket/stock/history"
+                f"?symbol={urllib.parse.quote(norm_sym)}&resolution=1D&from={from_ts}&to={to_ts}&countback={countback}&currencyCode=INR"
+            )
+        mc_headers = {**HEADERS, "Referer": "https://www.moneycontrol.com/", "Origin": "https://www.moneycontrol.com"}
+        req = urllib.request.Request(url, headers=mc_headers)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        if d.get("s") == "ok" and d.get("t"):
+            ts_arr = d.get("t", [])
+            o_arr = d.get("o", [])
+            h_arr = d.get("h", [])
+            l_arr = d.get("l", [])
+            c_arr = d.get("c", [])
+            v_arr = d.get("v") or [0.0] * len(ts_arr)
+            by_day = {}
+            for i, raw_ts in enumerate(ts_arr):
+                dt_ist = datetime.datetime.fromtimestamp(int(raw_ts), IST_TZ)
+                day_ts = int(datetime.datetime(dt_ist.year, dt_ist.month, dt_ist.day, tzinfo=datetime.timezone.utc).timestamp())
+                if day_ts < from_ts:
+                    continue
+                o, h, l, c = parse_num(o_arr[i]), parse_num(h_arr[i]), parse_num(l_arr[i]), parse_num(c_arr[i])
+                v = parse_num(v_arr[i]) if i < len(v_arr) else 0.0
+                if None in (o, h, l, c):
+                    continue
+                by_day[day_ts] = {"time": day_ts, "open": o, "high": h, "low": l, "close": c, "volume": v or 0.0}
+            if by_day:
+                bars = [by_day[k] for k in sorted(by_day.keys())]
+                with _CACHE_LOCK:
+                    _BARS_CACHE[cache_key] = {"ts": now, "bars": bars}
+                return [dict(b) for b in bars]
+    except Exception:
+        pass
+
+    # 2. Fallback: Groww Delayed NSE Charting Service
+    try:
+        url = (
+            f"https://groww.in/v1/api/charting_service/v2/chart/delayed/exchange/NSE/segment/CASH/{urllib.parse.quote(norm_sym)}"
+            f"?endTimeInMillis={to_ts * 1000}&intervalInMinutes=1440&startTimeInMillis={from_ts * 1000}"
+        )
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        candles = d.get("candles") or []
+        by_day = {}
+        for row in candles:
+            if len(row) < 5:
+                continue
+            dt_ist = datetime.datetime.fromtimestamp(int(row[0]), IST_TZ)
+            day_ts = int(datetime.datetime(dt_ist.year, dt_ist.month, dt_ist.day, tzinfo=datetime.timezone.utc).timestamp())
+            o, h, l, c = parse_num(row[1]), parse_num(row[2]), parse_num(row[3]), parse_num(row[4])
+            v = parse_num(row[5]) if len(row) > 5 else 0.0
+            if None in (o, h, l, c):
+                continue
+            by_day[day_ts] = {"time": day_ts, "open": o, "high": h, "low": l, "close": c, "volume": v or 0.0}
+        if by_day:
+            bars = [by_day[k] for k in sorted(by_day.keys())]
+            with _CACHE_LOCK:
+                _BARS_CACHE[cache_key] = {"ts": now, "bars": bars}
+            return [dict(b) for b in bars]
+    except Exception:
+        pass
+
+    return []
+
+
+def build_chart_payload(sym: str, rng: str, intv: str, market: str = "US") -> dict:
+    s_up = sym.upper().strip()
+    is_india = (
+        (market or "US").upper() == "IN"
+        or s_up.endswith((".NS", ".BO"))
+        or normalize_india_symbol(s_up) in INDIA_INDEX_MAP
+    )
+    if is_india:
+        meta = fetch_india_quote(sym)
+        bars = fetch_india_bars(sym, rng)
+    else:
+        meta = fetch_cnbc_quote(sym)
+        bars = fetch_nasdaq_bars(sym, rng)
     if not bars:
         raise ValueError(f"No historical market data found for ticker '{sym.upper()}'")
 
-    # Merge or append live real-time session bar from CNBC when market is open / ahead of Nasdaq EOD table
+    # Merge or append live real-time session bar when market is open / ahead of EOD table
     live_price = meta.get("regularMarketPrice")
     if live_price is not None and live_price > 0:
         last_bar = bars[-1]
         prev_close = meta.get("previousClose")
         live_ts = None
 
-        # 1. Parse exact quote date from CNBC lastTime (e.g. "2026-11-06T11:16:00.000-0500")
+        # 1. Parse exact quote date from lastTime (e.g. "2026-11-06T11:16:00.000-0500" or IST)
         m_dt = re.search(r"(\d{4})-(\d{2})-(\d{2})", str(meta.get("lastTime") or ""))
         if m_dt:
             yr, mo, dy = map(int, m_dt.groups())
@@ -203,6 +502,24 @@ def build_chart_payload(sym: str, rng: str, intv: str) -> dict:
             last_bar["low"] = min(last_bar["low"], live_low)
             if meta.get("regularMarketVolume"):
                 last_bar["volume"] = meta["regularMarketVolume"]
+    else:
+        # Populate meta from latest historical bars (e.g. for NIFTY50 index)
+        last_bar = bars[-1]
+        prev_bar = bars[-2] if len(bars) > 1 else last_bar
+        chg = last_bar["close"] - prev_bar["close"]
+        chg_pct = (chg / prev_bar["close"] * 100.0) if prev_bar["close"] else 0.0
+        meta.update({
+            "regularMarketPrice": round(last_bar["close"], 2),
+            "previousClose": round(prev_bar["close"], 2),
+            "change": round(chg, 2),
+            "changePct": round(chg_pct, 2),
+            "open": round(last_bar["open"], 2),
+            "dayHigh": round(last_bar["high"], 2),
+            "dayLow": round(last_bar["low"], 2),
+            "regularMarketVolume": last_bar["volume"],
+            "fiftyTwoWeekHigh": round(max(b["high"] for b in bars[-min(252, len(bars)):]), 2),
+            "fiftyTwoWeekLow": round(min(b["low"] for b in bars[-min(252, len(bars)):]), 2),
+        })
 
     # If weekly interval requested (5Y), aggregate daily bars into weekly bars
     if intv == "1wk" and len(bars) > 60:
@@ -487,15 +804,17 @@ def _analyze_weekly_candidate(sym: str, payload: dict, spy_map: dict, spy_closes
     wf_win_rate = (sum(1 for r in wf_rets if r > 0) / max(1, len(wf_rets))) * 100.0
     wf_avg_ret = sum(wf_rets) / max(1, len(wf_rets))
 
-    # 8. Fundamental Valuation (P/E, Fwd P/E) & Short-Term Overextension ("Stretched" Guardrail)
+    # 8. Fundamental Valuation (P/E, Fwd P/E, Industry P/E) & Short-Term Overextension ("Stretched" Guardrail)
     pe_ttm = meta.get("trailingPE")
     pe_fwd = meta.get("forwardPE")
+    pe_ind = meta.get("industryPE")
     stretch_20_atr = (price - le20) / max(l_atr, 0.01)
     stretch_50_atr = (price - le50) / max(l_atr, 0.01)
 
     # High P/E without rapid forward earnings compression (e.g. defensive retail at ~50x P/E)
     fwd_ratio = (pe_fwd / pe_ttm) if (pe_ttm and pe_ttm > 0 and pe_fwd and pe_fwd > 0) else 0.90
-    is_val_stretched = bool(pe_ttm is not None and pe_ttm >= 42.0 and fwd_ratio > 0.80)
+    ind_stretched = True if (pe_ind is None or pe_ind <= 0) else (pe_ttm >= pe_ind * 1.15)
+    is_val_stretched = bool(pe_ttm is not None and pe_ttm >= 42.0 and fwd_ratio > 0.80 and ind_stretched)
     is_tech_stretched = bool(
         (stretch_20_atr >= 1.65 or stretch_50_atr >= 3.2 or l_rsi14 >= 64.5)
         and not is_pullback_mode
@@ -625,23 +944,32 @@ def _pearson_corr(map_a: dict, map_b: dict) -> float:
     return max(-0.99, min(0.99, num / (dx * dy)))
 
 
-def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str = "leaders") -> dict:
+def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str = "leaders", market: str = "US") -> dict:
+    is_india = (market or "US").upper() == "IN" or (preset or "").startswith("in_")
+    mkt = "IN" if is_india else "US"
+    ccy = "₹" if is_india else "$"
+    bench_sym = "NIFTY50" if is_india else "SPY"
+    bench_label = "NIFTY 50" if is_india else "SPY"
+
     if not symbols:
-        symbols = WEEKLY_PRESETS.get(preset, WEEKLY_PRESETS["leaders"])
+        if is_india:
+            symbols = INDIA_WEEKLY_PRESETS.get(preset, INDIA_WEEKLY_PRESETS["in_leaders"])
+        else:
+            symbols = WEEKLY_PRESETS.get(preset, WEEKLY_PRESETS["leaders"])
     clean_syms = []
     for s in symbols:
-        u = s.strip().upper()
+        u = normalize_india_symbol(s) if is_india else s.strip().upper()
         if u and u not in clean_syms:
             clean_syms.append(u)
     clean_syms = clean_syms[:24]
 
     all_to_fetch = list(clean_syms)
-    if "SPY" not in all_to_fetch:
-        all_to_fetch.append("SPY")
+    if bench_sym not in all_to_fetch:
+        all_to_fetch.append(bench_sym)
 
     payloads = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
-        fut_map = {pool.submit(build_chart_payload, sym, "6mo", "1d"): sym for sym in all_to_fetch}
+        fut_map = {pool.submit(build_chart_payload, sym, "6mo", "1d", mkt): sym for sym in all_to_fetch}
         for fut in concurrent.futures.as_completed(fut_map):
             sym = fut_map[fut]
             try:
@@ -651,8 +979,8 @@ def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str 
 
     spy_map = {}
     spy_closes = []
-    if "SPY" in payloads:
-        sr = payloads["SPY"]["chart"]["result"][0]
+    if bench_sym in payloads:
+        sr = payloads[bench_sym]["chart"]["result"][0]
         sts = sr.get("timestamp", [])
         sq = sr.get("indicators", {}).get("quote", [{}])[0].get("close", [])
         for t, c in zip(sts, sq):
@@ -705,16 +1033,16 @@ def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str 
             action = "WAIT PULLBACK / DCA"
             setup_type = "⚠️ STRETCHED / RICH P/E"
             rationale = (
-                f"High-quality momentum ({c['rs_21d_vs_spy']:+.1f}% vs SPY), but stretched +{c['stretch_20_atr']:.1f}× ATR above EMA20 "
-                f"(RSI {c['rsi_14']:.1f}) at a steep {pe_str} — risky 1-week chase; wait for pullback to ${c['ema_20']} or DCA."
+                f"High-quality momentum ({c['rs_21d_vs_spy']:+.1f}% vs {bench_label}), but stretched +{c['stretch_20_atr']:.1f}× ATR above EMA20 "
+                f"(RSI {c['rsi_14']:.1f}) at a steep {pe_str} — risky 1-week chase; wait for pullback to {ccy}{c['ema_20']} or DCA."
             )
         elif c["is_tech_stretched"] and c["wq_alpha101"] < 0:
             score = min(score, 56)
             action = "WAIT PULLBACK"
             setup_type = "⚠️ SHORT-TERM STRETCHED"
             rationale = (
-                f"Extended +{c['stretch_20_atr']:.1f}× ATR above EMA20 (${c['ema_20']}) with RSI {c['rsi_14']:.1f} "
-                f"and negative 5D intraday body ({c['wq_alpha101']:+.2f}); wait for dip toward S1 (${piv['s1']})."
+                f"Extended +{c['stretch_20_atr']:.1f}× ATR above EMA20 ({ccy}{c['ema_20']}) with RSI {c['rsi_14']:.1f} "
+                f"and negative 5D intraday body ({c['wq_alpha101']:+.2f}); wait for dip toward S1 ({ccy}{piv['s1']})."
             )
         else:
             if score >= 70:
@@ -735,26 +1063,26 @@ def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str 
             elif c["is_pullback_setup"] and score >= 56:
                 setup_type = "🎯 DIP-BUY PULLBACK"
                 rationale = (
-                    f"Secular uptrend (>SMA200 ${c['sma_200']}, {pe_str}) with oversold Connors RSI(2)={c['connors_rsi_2']:.0f} "
-                    f"into weekly support S1 (${piv['s1']}); {c['walk_forward_5d']['win_rate_pct']:.0f}% historical 5D bounce rate."
+                    f"Secular uptrend (>SMA200 {ccy}{c['sma_200']}, {pe_str}) with oversold Connors RSI(2)={c['connors_rsi_2']:.0f} "
+                    f"into weekly support S1 ({ccy}{piv['s1']}); {c['walk_forward_5d']['win_rate_pct']:.0f}% historical 5D bounce rate."
                 )
             elif score >= 58:
                 setup_type = "🚀 MOMENTUM LEADER"
                 rationale = (
-                    f"Outperforming SPY by {c['rs_21d_vs_spy']:+.1f}% (1M, {pe_str}) with {c['vol_acc_ratio']:.2f}× volume accumulation "
+                    f"Outperforming {bench_label} by {c['rs_21d_vs_spy']:+.1f}% (1M, {pe_str}) with {c['vol_acc_ratio']:.2f}× volume accumulation "
                     f"and {c['mc_5d']['prob_up_pct']:.0f}% 5D Monte Carlo win probability."
                 )
             elif score <= 38:
                 setup_type = "🛡️ RELATIVE LAGGARD"
                 rationale = (
-                    f"Trailing SPY ({c['rs_21d_vs_spy']:+.1f}% 1M) with weak money flow ({c['vol_acc_ratio']:.2f}× Up/Dn vol) "
+                    f"Trailing {bench_label} ({c['rs_21d_vs_spy']:+.1f}% 1M) with weak money flow ({c['vol_acc_ratio']:.2f}× Up/Dn vol) "
                     f"and below key moving averages."
                 )
             else:
                 setup_type = "⚖️ RANGE / NEUTRAL"
                 rationale = (
-                    f"Consolidating near Weekly Pivot (${piv['pivot']}, {pe_str}) with RSI(14)={c['rsi_14']:.1f}; "
-                    f"await breakout above ${piv['r1']} or pullback to ${piv['s1']}."
+                    f"Consolidating near Weekly Pivot ({ccy}{piv['pivot']}, {pe_str}) with RSI(14)={c['rsi_14']:.1f}; "
+                    f"await breakout above {ccy}{piv['r1']} or pullback to {ccy}{piv['s1']}."
                 )
 
         c["weekly_alpha_score"] = score
@@ -881,11 +1209,16 @@ def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str 
     mon_dt = today_dt - datetime.timedelta(days=days_since_mon) if days_since_mon <= 4 else today_dt + datetime.timedelta(days=(7 - days_since_mon))
     fri_dt = mon_dt + datetime.timedelta(days=4)
 
+    bench_ret_5d = round(((spy_closes[-1] - spy_closes[max(0, len(spy_closes) - 6)]) / spy_closes[max(0, len(spy_closes) - 6)]) * 100.0, 2) if len(spy_closes) > 5 else 0.0
+
     return {
         "as_of": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "week_window": f"{mon_dt.strftime('%b %d')} – {fri_dt.strftime('%b %d, %Y')}",
-        "benchmark": "SPY",
-        "spy_ret_5d_pct": round(((spy_closes[-1] - spy_closes[max(0, len(spy_closes) - 6)]) / spy_closes[max(0, len(spy_closes) - 6)]) * 100.0, 2) if len(spy_closes) > 5 else 0.0,
+        "market": mkt,
+        "currency": "INR" if is_india else "USD",
+        "currency_symbol": ccy,
+        "benchmark": bench_label,
+        "spy_ret_5d_pct": bench_ret_5d,
         "universe_size": len(candidates),
         "capital": capital,
         "top_picks": candidates[:5],
@@ -929,8 +1262,9 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
             sym = qs.get("symbol", ["NVDA"])[0]
             rng = qs.get("range", ["1y"])[0]
             intv = qs.get("interval", ["1d"])[0]
+            mkt = qs.get("market", ["US"])[0]
             try:
-                payload = build_chart_payload(sym, rng, intv)
+                payload = build_chart_payload(sym, rng, intv, market=mkt)
                 body = json.dumps(payload).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -947,16 +1281,19 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/weekly-scan":
             qs = urllib.parse.parse_qs(parsed.query)
-            preset = qs.get("preset", ["leaders"])[0]
+            mkt = qs.get("market", ["US"])[0]
+            default_preset = "in_leaders" if mkt.upper() == "IN" else "leaders"
+            default_cap = "500000" if mkt.upper() == "IN" else "25000"
+            preset = qs.get("preset", [default_preset])[0]
             syms_raw = qs.get("symbols", [""])[0]
-            cap_raw = qs.get("capital", ["25000"])[0]
+            cap_raw = qs.get("capital", [default_cap])[0]
             try:
                 capital = float(cap_raw)
             except ValueError:
-                capital = 25000.0
+                capital = 500000.0 if mkt.upper() == "IN" else 25000.0
             syms = [s.strip() for s in syms_raw.split(",") if s.strip()] if syms_raw else None
             try:
-                report = run_weekly_scan(symbols=syms, capital=capital, preset=preset)
+                report = run_weekly_scan(symbols=syms, capital=capital, preset=preset, market=mkt)
                 body = json.dumps(report).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")

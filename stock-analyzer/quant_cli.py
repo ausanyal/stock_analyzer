@@ -25,8 +25,8 @@ import urllib.request
 from server import build_chart_payload, run_weekly_scan
 
 
-def fetch_yahoo_chart(symbol: str, rng: str = "1y", interval: str = "1d") -> dict:
-    data = build_chart_payload(symbol, rng, interval)
+def fetch_yahoo_chart(symbol: str, rng: str = "1y", interval: str = "1d", market: str = "US") -> dict:
+    data = build_chart_payload(symbol, rng, interval, market=market)
     res = data["chart"]["result"][0]
     ts = res.get("timestamp", [])
     q = res.get("indicators", {}).get("quote", [{}])[0]
@@ -222,11 +222,13 @@ def run_monte_carlo(closes, n_paths=1000, n_days=63, seed=42):
     }
 
 
-def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: float = 25000.0):
-    stock = fetch_yahoo_chart(symbol, rng, "1d")
+def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: float = 25000.0, market: str = "US"):
+    stock = fetch_yahoo_chart(symbol, rng, "1d", market=market)
     candles = stock["candles"]
+    meta = stock.get("meta", {})
     closes = [c["close"] for c in candles]
     price = closes[-1]
+    is_in = (market or "US").upper() == "IN" or meta.get("currency") == "INR"
 
     e20 = ema(closes, 20)
     e50 = ema(closes, 50)
@@ -317,7 +319,11 @@ def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: floa
     shares = max(1, int((capital * 0.01) / max(abs(price - stop_loss), 0.01)))
 
     return {
-        "ticker": symbol.upper(),
+        "ticker": meta.get("symbol") or symbol.upper(),
+        "name": meta.get("longName") or symbol.upper(),
+        "market": "IN" if is_in else "US",
+        "currency": "INR" if is_in else "USD",
+        "currency_symbol": "₹" if is_in else "$",
         "price": round(price, 2),
         "last_date": candles[-1]["date"],
         "bars_analyzed": len(candles),
@@ -363,20 +369,24 @@ def analyze_ticker(symbol: str, rng: str = "1y", n_days: int = 63, capital: floa
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="StockSage Quant Pro CLI")
-    parser.add_argument("ticker", nargs="?", default="NVDA", help="Stock ticker symbol or comma-separated list (e.g. NVDA, AAPL)")
+    parser = argparse.ArgumentParser(description="StockSage Quant Pro CLI (US & India NSE Markets)")
+    parser.add_argument("ticker", nargs="?", default="NVDA", help="Stock ticker symbol or comma-separated list (e.g. NVDA, RELIANCE)")
+    parser.add_argument("--market", default="US", choices=["US", "IN", "us", "in"], help="Market universe: US (NASDAQ/NYSE) or IN (NSE/BSE India)")
     parser.add_argument("--weekly", action="store_true", help="Run cross-sectional Weekly Alpha Picks & Risk-Parity Basket scanner")
-    parser.add_argument("--preset", default="leaders", help="Weekly universe preset (leaders, ai_semis, momentum, defensive, etfs)")
+    parser.add_argument("--preset", default="leaders", help="Weekly universe preset (leaders, ai_semis, momentum, defensive, etfs, in_leaders, in_it, in_banks, in_infra_auto, in_pharma_fmcg)")
     parser.add_argument("--range", default="1y", help="History range (3mo, 6mo, 1y, 2y, 5y)")
     parser.add_argument("--days", type=int, default=63, help="Monte Carlo forecast horizon in trading days")
-    parser.add_argument("--capital", type=float, default=25000.0, help="Portfolio capital for position sizing")
+    parser.add_argument("--capital", type=float, default=None, help="Portfolio capital for position sizing (default: $25,000 US / ₹500,000 IN)")
     args = parser.parse_args()
+    mkt = "IN" if (args.market.upper() == "IN" or args.preset.startswith("in_") or args.ticker.upper().endswith((".NS", ".BO"))) else "US"
+    cap = args.capital if args.capital is not None else (500000.0 if mkt == "IN" else 25000.0)
     try:
-        if args.weekly or args.ticker.upper() == "WEEKLY":
+        if args.weekly or args.ticker.upper() in ("WEEKLY", "WEEKLY_IN"):
             syms = [s.strip() for s in args.ticker.split(",") if s.strip()] if ("," in args.ticker) else None
-            report = run_weekly_scan(symbols=syms, capital=args.capital, preset=args.preset)
+            preset = args.preset if (mkt == "US" or args.preset.startswith("in_")) else "in_leaders"
+            report = run_weekly_scan(symbols=syms, capital=cap, preset=preset, market=mkt)
         else:
-            report = analyze_ticker(args.ticker, args.range, args.days, args.capital)
+            report = analyze_ticker(args.ticker, args.range, args.days, cap, market=mkt)
         print(json.dumps(report, indent=2))
     except Exception as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)

@@ -137,7 +137,31 @@
       border: 1px solid rgba(56,189,248,.3);
       text-transform: uppercase;
     }
-    .search-wrap { display: flex; gap: 5px; width: 260px; }
+    .market-tabs {
+      display: flex; gap: 3px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: var(--r-sm);
+      padding: 2px;
+      flex-shrink: 0;
+    }
+    .mkt-tab {
+      background: transparent; border: 1px solid transparent;
+      color: var(--muted); padding: 4px 10px;
+      border-radius: 4px; font-size: 11.5px; font-weight: 700;
+      cursor: pointer; transition: all .15s;
+      display: flex; align-items: center; gap: 5px; white-space: nowrap;
+    }
+    .mkt-tab:hover { color: var(--text); }
+    .mkt-tab.active[data-m="US"] {
+      background: rgba(56,189,248,.16); color: var(--accent);
+      border-color: rgba(56,189,248,.4); box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    }
+    .mkt-tab.active[data-m="IN"] {
+      background: rgba(245,158,11,.18); color: #fbbf24;
+      border-color: rgba(245,158,11,.45); box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    }
+    .search-wrap { display: flex; gap: 5px; width: 250px; }
     #tickerInput {
       flex: 1; min-width: 0;
       background: var(--bg3); border: 1px solid var(--border);
@@ -574,11 +598,15 @@
 <!-- HEADER -->
 <header>
   <div class="logo">📈 StockSage <span class="logo-tag">Quant Pro</span></div>
+  <div class="market-tabs" id="marketTabs">
+    <button class="mkt-tab active" data-m="US" title="US Equities (NASDAQ / NYSE · USD $)">🇺🇸 US Market</button>
+    <button class="mkt-tab" data-m="IN" title="Indian Equities (NSE / BSE · INR ₹)">🇮🇳 India (NSE)</button>
+  </div>
   <div class="search-wrap">
-    <input type="text" id="tickerInput" placeholder="Ticker (e.g. NVDA, AAPL)" maxlength="12">
+    <input type="text" id="tickerInput" placeholder="Ticker (e.g. NVDA, AAPL)" maxlength="16">
     <button class="btn" id="analyzeBtn">Analyze</button>
   </div>
-  <div class="quick-tickers">
+  <div class="quick-tickers" id="quickTickers">
     <button class="qt" data-t="NVDA">NVDA</button>
     <button class="qt" data-t="AAPL">AAPL</button>
     <button class="qt" data-t="MSFT">MSFT</button>
@@ -596,8 +624,8 @@
   </div>
   <button class="btn btn-purple" id="weeklyTopBtn" style="padding:5px 11px;font-size:11.5px" title="Jump to Weekly Top Stock Recommendations & Risk-Parity Playbook">📅 Weekly Picks</button>
   <div class="header-gap"></div>
-  <div class="acct-pill" title="Portfolio size used to calculate exact share count & dollar allocation">
-    <span>Capital ($):</span>
+  <div class="acct-pill" title="Portfolio size used to calculate exact share count & allocation">
+    <span id="acctCurrencyLbl">Capital ($):</span>
     <input type="number" id="acctSize" value="25000" step="1000" min="500">
   </div>
   <button id="settingsBtn" title="Settings">⚙️</button>
@@ -616,7 +644,7 @@
     </div>
 
     <div class="sc" id="scQuant" style="display:none">
-      <div class="sc-title"><span>Quant Risk &amp; Alpha (vs SPY)</span><span class="badge b-blue">quants.md</span></div>
+      <div class="sc-title"><span id="scQuantTitle">Quant Risk &amp; Alpha (vs SPY)</span><span class="badge b-blue">quants.md</span></div>
       <div id="quantContent"></div>
     </div>
 
@@ -804,10 +832,10 @@
                     <th>Avg Basket Corr (ρ̄)</th>
                     <th>Optimal Weight</th>
                     <th>Suggested Shares</th>
-                    <th>Dollar Allocation</th>
+                    <th id="wkAllocColHdr">Allocation ($)</th>
                     <th>Weekly Stop-Loss</th>
                     <th>Friday Target (TP1)</th>
-                    <th>Stop Risk ($)</th>
+                    <th id="wkRiskColHdr">Stop Risk ($)</th>
                   </tr>
                 </thead>
                 <tbody id="wkBasketBody"></tbody>
@@ -829,7 +857,7 @@
                   <th>Weekly Alpha</th>
                   <th>Action</th>
                   <th>Setup Archetype</th>
-                  <th>RS vs SPY (1M)</th>
+                  <th id="wkRsColHdr">RS vs SPY (1M)</th>
                   <th>WQ Alpha#101 · Vol Acc</th>
                   <th>RSI(14) / RSI(2)</th>
                   <th>TTM Squeeze</th>
@@ -969,6 +997,7 @@
 //  GLOBAL STATE
 // ════════════════════════════════════════════════════════════════════════
 const S = {
+  market: 'US',
   ticker: '',
   candles: [],
   spyCandles: [],
@@ -991,7 +1020,12 @@ const S = {
 // ════════════════════════════════════════════════════════════════════════
 //  FORMATTERS & MATH HELPERS
 // ════════════════════════════════════════════════════════════════════════
-const f$ = (n, d=2) => (n==null || isNaN(n) || !isFinite(n)) ? 'N/A' : '$' + n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const ccySym = () => S.market === 'IN' ? '₹' : '$';
+const benchName = () => S.market === 'IN' ? 'NIFTY 50' : 'SPY';
+const benchTicker = () => S.market === 'IN' ? 'NIFTY50' : 'SPY';
+const f$ = (n, d=2) => (n==null || isNaN(n) || !isFinite(n))
+  ? 'N/A'
+  : ccySym() + n.toLocaleString(S.market === 'IN' ? 'en-IN' : 'en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fpct = (n, d=2) => (n==null || isNaN(n) || !isFinite(n)) ? 'N/A' : (n >= 0 ? '+' : '') + n.toFixed(d) + '%';
 const fVol = n => {
   if (n==null || isNaN(n)) return 'N/A';
@@ -1023,16 +1057,24 @@ const CALIBRATED_PROFILES = {
   AMD:   { name: 'Advanced Micro Devices, Inc.', price: 156.90, vol: 0.46, drift: 0.16, exchange: 'NASDAQ' },
   SPY:   { name: 'SPDR S&P 500 ETF Trust', price: 586.50, vol: 0.14, drift: 0.12, exchange: 'NYSEArca' },
   QQQ:   { name: 'Invesco QQQ Trust', price: 504.20, vol: 0.19, drift: 0.16, exchange: 'NASDAQ' },
+  RELIANCE: { name: 'Reliance Industries Ltd.', price: 1324.40, vol: 0.21, drift: 0.14, exchange: 'NSE INDIA', currency: 'INR' },
+  TCS:      { name: 'Tata Consultancy Services Ltd.', price: 4120.00, vol: 0.19, drift: 0.13, exchange: 'NSE INDIA', currency: 'INR' },
+  HDFCBANK: { name: 'HDFC Bank Ltd.', price: 1745.00, vol: 0.18, drift: 0.12, exchange: 'NSE INDIA', currency: 'INR' },
+  INFY:     { name: 'Infosys Ltd.', price: 1860.00, vol: 0.22, drift: 0.14, exchange: 'NSE INDIA', currency: 'INR' },
+  ICICIBANK:{ name: 'ICICI Bank Ltd.', price: 1295.00, vol: 0.19, drift: 0.16, exchange: 'NSE INDIA', currency: 'INR' },
+  SBIN:     { name: 'State Bank of India', price: 842.00, vol: 0.25, drift: 0.18, exchange: 'NSE INDIA', currency: 'INR' },
+  NIFTY50:  { name: 'NIFTY 50 Index', price: 24986.40, vol: 0.13, drift: 0.13, exchange: 'NSE INDIA INDEX', currency: 'INR' },
 };
 
 function generateCalibratedChart(sym, range, interval) {
   const up = sym.toUpperCase();
   const prof = CALIBRATED_PROFILES[up] || {
     name: `${up} Equity`,
-    price: 85 + ((up.charCodeAt(0) * 17 + (up.charCodeAt(1) || 5) * 31) % 220),
-    vol: 0.30,
+    price: (S.market === 'IN' ? 950 : 85) + ((up.charCodeAt(0) * 17 + (up.charCodeAt(1) || 5) * 31) % (S.market === 'IN' ? 1800 : 220)),
+    vol: 0.28,
     drift: 0.12,
-    exchange: 'NYSE/NASDAQ',
+    exchange: S.market === 'IN' ? 'NSE INDIA' : 'NYSE/NASDAQ',
+    currency: S.market === 'IN' ? 'INR' : 'USD',
   };
   const barsMap = { '1mo': 140, '3mo': 64, '6mo': 126, '1y': 252, '2y': 504, '5y': 260 };
   const nBars = barsMap[range] || 252;
@@ -1093,7 +1135,7 @@ function generateCalibratedChart(sym, range, interval) {
           shortName: prof.name,
           exchangeName: prof.exchange,
           instrumentType: 'EQUITY',
-          currency: 'USD',
+          currency: prof.currency || (S.market === 'IN' ? 'INR' : 'USD'),
           fiftyTwoWeekHigh: Math.max(...high),
           fiftyTwoWeekLow: Math.min(...low),
         },
@@ -1106,16 +1148,18 @@ function generateCalibratedChart(sym, range, interval) {
 }
 
 async function fetchYahooChartJSON(sym, range, interval) {
-  const cacheKey = `${sym}_${range}_${interval}`;
+  const mkt = S.market || 'US';
+  const cacheKey = `${mkt}_${sym}_${range}_${interval}`;
   if (cache.has(cacheKey)) {
     const c = cache.get(cacheKey);
     if (Date.now() - c.ts < 5000) return c.data;
   }
 
-  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${interval}&range=${range}&events=div,split&includePrePost=false`;
+  const ySym = mkt === 'IN' ? (sym.toUpperCase() === 'NIFTY50' ? '^NSEI' : (sym.includes('.') ? sym : `${sym}.NS`)) : sym;
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ySym)}?interval=${interval}&range=${range}&events=div,split&includePrePost=false`;
 
-  // 1. Try local Python StockSage server proxy first (http://127.0.0.1:8765 — Nasdaq + CNBC Live Feed)
-  const localUrl = `http://127.0.0.1:8765/api/chart?symbol=${encodeURIComponent(sym)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&_=${Date.now()}`;
+  // 1. Try local Python StockSage server proxy first (http://127.0.0.1:8765 — US Nasdaq/CNBC + India NSE Moneycontrol/Groww)
+  const localUrl = `http://127.0.0.1:8765/api/chart?symbol=${encodeURIComponent(sym)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&market=${encodeURIComponent(mkt)}&_=${Date.now()}`;
   const strategies = [
     async () => {
       const r = await fetch(localUrl, { signal: AbortSignal.timeout(10000) });
@@ -2432,15 +2476,17 @@ function updateSidebar() {
   `;
 
   // Quant Risk & Alpha Section
+  const bLbl = benchName();
+  document.getElementById('scQuantTitle').textContent = `Quant Risk & Alpha (vs ${bLbl})`;
   document.getElementById('scQuant').style.display = '';
   document.getElementById('quantContent').innerHTML = [
     ['Regime (Hurst)', `<span class="badge ${quant.hurst > 0.55 ? 'b-blue' : quant.hurst < 0.45 ? 'b-purple' : 'b-gray'}">H=${quant.hurst.toFixed(2)} ${quant.hurst > 0.55 ? 'Trend' : quant.hurst < 0.45 ? 'Mean-Rev' : 'Mixed'}</span>`],
     ['Sharpe Ratio', `<span class="mv" style="color:${quant.sharpe >= 1 ? 'var(--green)' : quant.sharpe < 0 ? 'var(--red)' : 'var(--text)'}">${quant.sharpe.toFixed(2)}</span>`],
     ['Sortino Ratio', `<span class="mv">${quant.sortino.toFixed(2)}</span>`],
     ['Calmar Ratio', `<span class="mv">${quant.calmar.toFixed(2)}</span>`],
-    ['Beta vs SPY', `<span class="mv">${quant.beta != null ? quant.beta.toFixed(2) : 'N/A'}</span>`],
+    [`Beta vs ${bLbl}`, `<span class="mv">${quant.beta != null ? quant.beta.toFixed(2) : 'N/A'}</span>`],
     ['Jensen Alpha (Ann.)', `<span class="mv" style="color:${(quant.alphaAnn || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${quant.alphaAnn != null ? fpct(quant.alphaAnn * 100, 1) : 'N/A'}</span>`],
-    ['SPY Correlation', `<span class="mv">${quant.corr != null ? quant.corr.toFixed(2) + ` (R²=${(quant.r2 * 100).toFixed(0)}%)` : 'N/A'}</span>`],
+    [`${bLbl} Correlation`, `<span class="mv">${quant.corr != null ? quant.corr.toFixed(2) + ` (R²=${(quant.r2 * 100).toFixed(0)}%)` : 'N/A'}</span>`],
     ['Annualized Vol', `<span class="mv">${(quant.annVol * 100).toFixed(1)}%</span>`],
     ['Max Drawdown', `<span class="mv" style="color:var(--red)">${fpct(quant.maxDD * 100, 1)}</span>`],
     ['Daily VaR (95%)', `<span class="mv" style="color:var(--orange)">${fpct(quant.var95 * 100, 2)}</span>`],
@@ -2496,14 +2542,20 @@ function updateSidebar() {
   // Market & Fundamentals
   const avgVol20 = mean(candles.slice(-20).map(c => c.volume));
   const divStr = meta.dividendYield != null
-    ? `${meta.dividendYield.toFixed(2)}%${meta.dividendAmount ? ' ($' + meta.dividendAmount + ')' : ''}`
+    ? `${meta.dividendYield.toFixed(2)}%${meta.dividendAmount ? ' (' + ccySym() + meta.dividendAmount + ')' : ''}`
     : (quant.ttmDiv > 0 ? `${f$(quant.ttmDiv)} (${quant.divYield.toFixed(2)}%)` : 'None');
+  const mcapFormatted = (meta.marketCapStr && meta.marketCapStr !== 'N/A')
+    ? (/^[₹$]/.test(meta.marketCapStr) ? meta.marketCapStr : ccySym() + meta.marketCapStr)
+    : 'N/A';
+  const peFormatted = meta.trailingPE != null
+    ? `${meta.trailingPE.toFixed(2)}${meta.industryPE != null ? ` (Ind: ${meta.industryPE.toFixed(1)})` : ''}`
+    : 'N/A';
   document.getElementById('scMarket').style.display = '';
   document.getElementById('metricsContent').innerHTML = [
     ['Session Open / Prev Close', `${f$(meta.open || last.open)} / ${f$(prevClose)}`],
     ['Session High / Low', `${f$(meta.dayHigh || last.high)} / ${f$(meta.dayLow || last.low)}`],
-    ['Market Cap', meta.marketCapStr ? '$' + meta.marketCapStr : 'N/A'],
-    ['P/E Ratio (TTM)', meta.trailingPE != null ? meta.trailingPE.toFixed(2) : 'N/A'],
+    ['Market Cap', mcapFormatted],
+    ['P/E Ratio (TTM)', peFormatted],
     ['EPS (TTM)', meta.eps != null ? f$(meta.eps) : 'N/A'],
     ['Dividend Yield', divStr],
     ['52-Week High', f$(meta.fiftyTwoWeekHigh || Math.max(...candles.map(c => c.high)))],
@@ -2700,7 +2752,85 @@ const WEEKLY_PRESETS = {
   momentum: 'TSLA, PLTR, COIN, NFLX, UBER, SHOP, APP, CRWD, PANW, AMD, NVDA, META',
   defensive: 'JPM, UNH, LLY, JNJ, PG, KO, WMT, COST, XOM, CVX, CAT, V',
   etfs: 'SPY, QQQ, IWM, SMH, XLK, XLF, XLE, XLV, XLI, XLY, GLD, TLT',
+  in_leaders: 'RELIANCE, TCS, HDFCBANK, ICICIBANK, INFY, BHARTIARTL, SBIN, LT, ITC, SUNPHARMA, M&M, AXISBANK, BAJFINANCE, NTPC, MARUTI, TITAN',
+  in_it: 'TCS, INFY, HCLTECH, WIPRO, TECHM, LTIM, PERSISTENT, COFORGE, MPHASIS, KPITTECH, TATAELXSI, OFSS',
+  in_banks: 'HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, BAJFINANCE, BAJAJFINSV, INDUSINDBK, BANKBARODA, PNB, CHOLAFIN, PFC',
+  in_infra_auto: 'LT, M&M, MARUTI, BAJAJ-AUTO, EICHERMOT, TVSMOTOR, HAL, BEL, NTPC, POWERGRID, ADANIPORTS, ULTRACEMCO',
+  in_pharma_fmcg: 'SUNPHARMA, CIPLA, DRREDDY, DIVISLAB, APOLLOHOSP, LUPIN, ITC, HINDUNILVR, NESTLEIND, BRITANNIA, TITAN, TRENT',
 };
+
+const MARKET_PRESET_OPTIONS = {
+  US: [
+    ['leaders', 'Institutional Multi-Sector Leaders (16)'],
+    ['ai_semis', 'AI, Cloud & Semiconductors (12)'],
+    ['momentum', 'High-Beta Momentum & Growth (12)'],
+    ['defensive', 'Defensive, Value & Dividend (12)'],
+    ['etfs', 'Sector & Macro ETFs (12)'],
+    ['custom', 'Custom Watchlist Tickers'],
+  ],
+  IN: [
+    ['in_leaders', '🇮🇳 Nifty 50 Institutional Leaders (16)'],
+    ['in_it', '🇮🇳 Indian IT, AI & Digital Services (12)'],
+    ['in_banks', '🇮🇳 Nifty Bank, PSU & NBFCs (12)'],
+    ['in_infra_auto', '🇮🇳 Auto, Defence, PSU & Infrastructure (12)'],
+    ['in_pharma_fmcg', '🇮🇳 Pharma, Healthcare & Consumer Titans (12)'],
+    ['custom', 'Custom NSE Watchlist Tickers'],
+  ],
+};
+
+const MARKET_QUICK_TICKERS = {
+  US: ['NVDA', 'AAPL', 'MSFT', 'TSLA', 'META', 'SPY'],
+  IN: ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'SBIN', 'NIFTY50'],
+};
+
+function switchMarket(mkt) {
+  const target = mkt === 'IN' ? 'IN' : 'US';
+  S.market = target;
+
+  document.querySelectorAll('.mkt-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.m === target);
+  });
+
+  // Update Quick Tickers bar
+  const qtWrap = document.getElementById('quickTickers');
+  qtWrap.innerHTML = MARKET_QUICK_TICKERS[target].map(t => `<button class="qt" data-t="${t}">${t}</button>`).join('');
+  qtWrap.querySelectorAll('.qt').forEach(b => {
+    b.addEventListener('click', () => {
+      document.getElementById('tickerInput').value = b.dataset.t;
+      analyze();
+    });
+  });
+
+  // Update Placeholder & Default Capital
+  const tInput = document.getElementById('tickerInput');
+  const acctEl = document.getElementById('acctSize');
+  document.getElementById('acctCurrencyLbl').textContent = `Capital (${ccySym()}):`;
+  document.getElementById('wkAllocColHdr').textContent = `Allocation (${ccySym()})`;
+  document.getElementById('wkRiskColHdr').textContent = `Stop Risk (${ccySym()})`;
+  document.getElementById('wkRsColHdr').textContent = `RS vs ${benchName()} (1M)`;
+
+  if (target === 'IN') {
+    tInput.placeholder = 'NSE Ticker (e.g. RELIANCE, TCS, HDFCBANK)';
+    if (parseFloat(acctEl.value) === 25000) acctEl.value = '500000';
+    if (!localStorage.getItem('ss_rf')) S.rfRate = 6.75;
+  } else {
+    tInput.placeholder = 'Ticker (e.g. NVDA, AAPL)';
+    if (parseFloat(acctEl.value) === 500000) acctEl.value = '25000';
+    if (!localStorage.getItem('ss_rf')) S.rfRate = 4.25;
+  }
+
+  // Update Weekly Preset Dropdown & Tickers
+  const wkSelect = document.getElementById('wkPreset');
+  wkSelect.innerHTML = MARKET_PRESET_OPTIONS[target].map(([val, lbl]) => `<option value="${val}">${lbl}</option>`).join('');
+  const defPreset = MARKET_PRESET_OPTIONS[target][0][0];
+  wkSelect.value = defPreset;
+  document.getElementById('wkCustomSyms').value = WEEKLY_PRESETS[defPreset];
+
+  // Switch active ticker to market flagship & run full analysis + weekly scan
+  tInput.value = target === 'IN' ? 'RELIANCE' : 'NVDA';
+  analyze();
+  runWeeklyScanner();
+}
 
 function selectWeeklyTicker(sym) {
   document.getElementById('tickerInput').value = sym;
@@ -2709,13 +2839,15 @@ function selectWeeklyTicker(sym) {
 }
 
 async function runClientWeeklyScanFallback(symbols, capital) {
+  const bSym = benchTicker();
+  const bLbl = benchName();
   const cleanSyms = [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, 20);
-  const allSyms = cleanSyms.includes('SPY') ? cleanSyms : [...cleanSyms, 'SPY'];
+  const allSyms = cleanSyms.includes(bSym) ? cleanSyms : [...cleanSyms, bSym];
   const loaded = {};
   await Promise.all(allSyms.map(async sym => {
     try { loaded[sym] = await loadStock(sym, '6mo', '1d'); } catch {}
   }));
-  const spyCandles = loaded.SPY?.candles || [];
+  const spyCandles = loaded[bSym]?.candles || [];
   const spyCloses = spyCandles.map(c => c.close);
   const pctRet = (arr, lb) => {
     if (!arr.length) return 0;
@@ -2810,7 +2942,7 @@ async function runClientWeeklyScanFallback(symbols, capital) {
       weekly_alpha_score: score,
       weekly_action: action,
       setup_type,
-      rationale: `RS vs SPY ${rs21 >= 0 ? '+' : ''}${rs21.toFixed(1)}% (1M), Vol Acc ${volAcc.toFixed(2)}×, 5D MC Win Odds ${mc5.stats.probUp.toFixed(0)}%.`,
+      rationale: `RS vs ${bLbl} ${rs21 >= 0 ? '+' : ''}${rs21.toFixed(1)}% (1M), Vol Acc ${volAcc.toFixed(2)}×, 5D MC Win Odds ${mc5.stats.probUp.toFixed(0)}%.`,
       sigma_weekly_pct: Number((sigW * 100).toFixed(2)),
       exp_range_1sigma: [Number((price * (1 - sigW)).toFixed(2)), Number((price * (1 + sigW)).toFixed(2))],
       mc_5d: { prob_up_pct: Number(mc5.stats.probUp.toFixed(1)), exp_ret_pct: Number((((mc5.stats.mean - price) / price) * 100).toFixed(2)) },
@@ -2850,6 +2982,7 @@ async function runClientWeeklyScanFallback(symbols, capital) {
   });
   return {
     week_window: 'Current 5-Day Horizon',
+    benchmark: bLbl,
     spy_ret_5d_pct: Number(spyRet5.toFixed(2)),
     universe_size: candidates.length,
     capital,
@@ -2866,8 +2999,9 @@ async function runClientWeeklyScanFallback(symbols, capital) {
 
 function renderWeeklyScanner(data) {
   S.weeklyData = data;
-  document.getElementById('wkWindowBadge').textContent = `${data.week_window || 'Mon–Fri'} · SPY 5D: ${fpct(data.spy_ret_5d_pct || 0)}`;
-  document.getElementById('wkStatusTxt').textContent = `Scanned ${data.universe_size} tickers · Click any ticker to load chart`;
+  const bLbl = data.benchmark || benchName();
+  document.getElementById('wkWindowBadge').textContent = `${data.week_window || 'Mon–Fri'} · ${bLbl} 5D: ${fpct(data.spy_ret_5d_pct || 0)}`;
+  document.getElementById('wkStatusTxt').textContent = `Scanned ${data.universe_size} ${S.market === 'IN' ? 'NSE' : 'US'} tickers · Click any ticker to load chart`;
 
   // 1. Render Top 5 Weekly Cards
   const top5 = data.top_picks || [];
@@ -2939,7 +3073,6 @@ function renderWeeklyScanner(data) {
     const sqBadge = c.squeeze_status === 'FIRED BULL' ? 'b-green' : c.squeeze_status === 'SQUEEZE ON' ? 'b-purple' : 'b-gray';
     const p = c.weekly_plan;
     const piv = c.weekly_pivots;
-    const peTxt = c.pe_ttm != null ? ` · P/E ${c.pe_ttm}x` : '';
     return `
       <tr style="cursor:pointer" onclick="selectWeeklyTicker('${c.symbol}')" title="${c.rationale}">
         <td><strong>#${c.rank}</strong></td>
@@ -2966,14 +3099,14 @@ async function runWeeklyScanner() {
   const statusEl = document.getElementById('wkStatusTxt');
   const preset = document.getElementById('wkPreset').value;
   const customInput = document.getElementById('wkCustomSyms').value.trim();
-  const acct = parseFloat(document.getElementById('acctSize').value) || 25000;
+  const acct = parseFloat(document.getElementById('acctSize').value) || (S.market === 'IN' ? 500000 : 25000);
 
   btn.disabled = true;
   btn.textContent = '⏳ Scanning…';
-  statusEl.textContent = 'Running parallel cross-sectional factor & correlation scan…';
+  statusEl.textContent = `Running parallel cross-sectional factor & correlation scan (${S.market === 'IN' ? 'NSE India' : 'US Market'})…`;
 
   try {
-    const url = `http://127.0.0.1:8765/api/weekly-scan?preset=${encodeURIComponent(preset)}&symbols=${encodeURIComponent(customInput)}&capital=${acct}&_=${Date.now()}`;
+    const url = `http://127.0.0.1:8765/api/weekly-scan?market=${encodeURIComponent(S.market)}&preset=${encodeURIComponent(preset)}&symbols=${encodeURIComponent(customInput)}&capital=${acct}&_=${Date.now()}`;
     let data = null;
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
@@ -3008,16 +3141,18 @@ async function analyze() {
   const range = rBtn?.dataset.r || '1y';
   const intv = rBtn?.dataset.i || '1d';
   const barsPerYear = intv === '1h' ? 252 * 6.5 : intv === '1wk' ? 52 : 252;
+  const bSym = benchTicker();
+  const bLbl = benchName();
 
   document.getElementById('loading').classList.remove('hidden');
-  document.getElementById('loadMsg').textContent = `Fetching ${ticker} & SPY benchmark data…`;
+  document.getElementById('loadMsg').textContent = `Fetching ${ticker} & ${bLbl} benchmark data…`;
   document.getElementById('analyzeBtn').disabled = true;
   setStatus(`Loading ${ticker}…`);
 
   try {
     const [stockData, spyData] = await Promise.all([
       loadStock(ticker, range, intv),
-      ticker === 'SPY' ? Promise.resolve(null) : loadStock('SPY', range, intv).catch(() => null),
+      ticker === bSym ? Promise.resolve(null) : loadStock(bSym, range, intv).catch(() => null),
     ]);
 
     S.candles = stockData.candles;
@@ -3076,6 +3211,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('analyzeBtn').addEventListener('click', analyze);
   document.getElementById('tickerInput').addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
+
+  document.querySelectorAll('.mkt-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.m !== S.market) switchMarket(btn.dataset.m);
+    });
+  });
 
   document.querySelectorAll('.qt').forEach(b => {
     b.addEventListener('click', () => {
