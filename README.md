@@ -50,11 +50,16 @@ Interactive docked reasoning assistant synced in real time with the active stock
 
 ## 🚀 Key Features
 
-- **🤖 Quant Copilot Reasoning Chatbot (`💬 Quant Chat`)**:
+- **🤖 Agentic Quant Copilot Reasoning Chatbot (`💬 Quant Chat`)**:
   - **Hybrid Architecture**: Works out-of-the-box with zero API key via a deterministic **Multi-Factor Quantitative Reasoning Engine**, and automatically layers **Gemini 2.5 Flash / Pro** conversational reasoning when an API key is configured.
-  - **Head-to-Head Peer Comparisons**: Mention any peer ticker (e.g., *"Compare AAPL vs MSFT"* or *"Compare RELIANCE vs TCS"*) to fetch live telemetry and generate a side-by-side institutional scorecard across Composite Quant Score, Hurst Regime, Sharpe/Sortino, Max Drawdown, Trailing P/E, RSI/ATR Stretch, and 63-day Monte Carlo Win Odds.
-  - **Interactive "What-If" Position & Target Simulator**: Ask *"What if I invest \$50,000?"* or *"What are the odds it reaches \$400?"* to compute custom `1%-Risk` / `Half-Kelly` share counts, stop-loss dollar risk, and empirical Monte Carlo target probabilities $P(S_T \ge K)$.
-  - **Context-Aware Prompt Chips & Action Buttons**: 1-click chips for Verdict Breakdown, Entry/Pullback Timing, Valuation (`P/E`) & `ATR` Stretch Audit, Monte Carlo Tail Risk, Best Backtested Strategy, and Weekly Top 5 Picks—plus inline buttons inside replies to switch charts or scroll to panels.
+  - **🛠️ Bi-Directional Agentic Tool Calling**: Natural-language commands actively control the simulator and chart—e.g., *"Run 2000 Monte Carlo paths over 21 days using Block Bootstrap and plot custom levels on the chart"* or *"Plot custom entry at 340 and stop at 320"*.
+  - **🔭 Multi-Timeframe Confluence Auditor (`1H` / `1D` / `1W`)**: Fetches Intraday Hourly (`1mo/1h`), Daily (`1y/1d`), and Secular Weekly (`5y/1wk`) bars in parallel to score **`3/3 Full Multi-Timeframe Alignment`** vs. **`Timeframe Divergence`**.
+  - **⚡ Macro Stress-Testing & Shock Simulator**: Models `-3%`, `-5%`, `-8%`, and `-12%` benchmark shocks (`SPY` or `NIFTY 50`) using empirical CAPM $\beta$, checking whether the drawdown breaches Volume Profile `VAL` or the `1.8× ATR` Chandelier Stop-Loss.
+  - **📰 Live News & Catalyst Sentiment Feed (`/api/news`)**: Pulls real-time wire headlines from Yahoo Finance & Google News RSS, classifies `BULLISH` / `BEARISH` / `NEUTRAL` sentiment, and cross-checks headline flow against technical accumulation.
+  - **🔍 Natural-Language Cross-Sectional Screener**: Query the Weekly Universe conversationally (e.g., *"Screen for unstretched stocks with TTM Squeeze ON or P/E under 35"*).
+  - **⚖️ Custom Multi-Ticker Risk-Parity Portfolio Builder**: Mention 3+ tickers (e.g., *"Build a risk-parity portfolio across NVDA, AAPL, MSFT, JPM with \$50,000"*) to compute inverse-volatility allocations, share counts, and combined stop risk on the fly.
+  - **⚔️ Head-to-Head Peer Comparisons & "What-If" Simulator**: Side-by-side scorecards (`AAPL vs MSFT`, `RELIANCE vs TCS`) and custom capital/target probability calculators.
+  - **📥 1-Click Institutional IC Memo Export**: Downloads a complete `.md` Investment Committee report containing the stock's telemetry, trade proposal, Monte Carlo percentiles, and full Q&A transcript.
 
 - **Dual-Market Real-Time Engine (`🇺🇸 US` & `🇮🇳 India NSE/BSE`)**:
   - **US Equities**: Fetches historical OHLCV bars from the Official Nasdaq Historical API (`api.nasdaq.com`) overlaid with real-time intraday quotes and fundamentals (`P/E`, `Market Cap`, `EPS`, `52W High/Low`, `Dividend Yield`) from the CNBC Real-Time Quote API (`quote.cnbc.com`).

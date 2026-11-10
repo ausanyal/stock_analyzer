@@ -1240,6 +1240,110 @@ def run_weekly_scan(symbols: list = None, capital: float = 25000.0, preset: str 
     }
 
 
+def _classify_headline_sentiment(title: str) -> str:
+    t = (title or "").lower()
+    bull_words = (
+        "beat", "beats", "surge", "surges", "rally", "rallies", "upgrade", "upgraded",
+        "outperform", "buy", "record", "growth", "profit", "jump", "jumps", "soar",
+        "soars", "bull", "bullish", "strong", "gain", "gains", "win", "wins", "deal",
+        "partnership", "dividend", "breakout", "higher", "top pick", "boost", "boosts",
+    )
+    bear_words = (
+        "miss", "misses", "drop", "drops", "plunge", "plunges", "downgrade", "downgraded",
+        "underperform", "sell", "loss", "losses", "fall", "falls", "slump", "slumps",
+        "bear", "bearish", "weak", "cut", "cuts", "lawsuit", "probe", "warning",
+        "stretched", "overvalued", "decline", "declines", "lower", "risk", "crash",
+    )
+    b_pos = sum(1 for w in bull_words if w in t)
+    b_neg = sum(1 for w in bear_words if w in t)
+    if b_pos > b_neg:
+        return "BULLISH"
+    if b_neg > b_pos:
+        return "BEARISH"
+    return "NEUTRAL"
+
+
+def fetch_stock_news(symbol: str, market: str = "US") -> dict:
+    is_india = (market or "US").upper() == "IN" or symbol.upper().endswith((".NS", ".BO"))
+    clean_sym = normalize_india_symbol(symbol) if is_india else symbol.strip().upper()
+    query_sym = f"{clean_sym}.NS" if (is_india and clean_sym not in INDIA_INDEX_MAP) else clean_sym
+    items = []
+
+    # 1. Primary: Yahoo Finance v1 Search News Endpoint
+    try:
+        y_url = f"https://query1.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(query_sym)}&quotesCount=1&newsCount=8"
+        req = urllib.request.Request(y_url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        for n in data.get("news", [])[:8]:
+            title = (n.get("title") or "").strip()
+            if not title:
+                continue
+            pub_ts = n.get("providerPublishTime")
+            pub_str = (
+                datetime.datetime.fromtimestamp(pub_ts, tz=datetime.timezone.utc).strftime("%b %d, %H:%M UTC")
+                if pub_ts
+                else "Recent"
+            )
+            sent = _classify_headline_sentiment(title)
+            items.append({
+                "title": title,
+                "publisher": n.get("publisher") or "Financial Wire",
+                "link": n.get("link") or f"https://finance.yahoo.com/quote/{query_sym}",
+                "published": pub_str,
+                "sentiment": sent,
+            })
+    except Exception:
+        pass
+
+    # 2. Fallback: Google News RSS Feed if Yahoo returned < 2 items
+    if len(items) < 2:
+        try:
+            import xml.etree.ElementTree as ET
+            gl = "IN" if is_india else "US"
+            hl = "en-IN" if is_india else "en-US"
+            q_str = f"{clean_sym} {'NSE stock India' if is_india else 'stock market'}"
+            rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(q_str)}&hl={hl}&gl={gl}&ceid={gl}:en"
+            req = urllib.request.Request(rss_url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                xml_bytes = resp.read()
+            root = ET.fromstring(xml_bytes)
+            for item_el in root.findall("./channel/item")[:7]:
+                raw_title = (item_el.findtext("title") or "").strip()
+                if not raw_title:
+                    continue
+                parts = raw_title.rsplit(" - ", 1)
+                title = parts[0].strip()
+                publisher = parts[1].strip() if len(parts) > 1 else (item_el.findtext("source") or "Market News")
+                link = (item_el.findtext("link") or "").strip()
+                pub_date = (item_el.findtext("pubDate") or "")[:22].strip()
+                sent = _classify_headline_sentiment(title)
+                items.append({
+                    "title": title,
+                    "publisher": publisher,
+                    "link": link,
+                    "published": pub_date or "Recent",
+                    "sentiment": sent,
+                })
+        except Exception:
+            pass
+
+    bull_c = sum(1 for x in items if x["sentiment"] == "BULLISH")
+    bear_c = sum(1 for x in items if x["sentiment"] == "BEARISH")
+    neut_c = sum(1 for x in items if x["sentiment"] == "NEUTRAL")
+    overall = "BULLISH" if bull_c > bear_c else ("BEARISH" if bear_c > bull_c else "NEUTRAL")
+
+    return {
+        "symbol": clean_sym,
+        "market": "IN" if is_india else "US",
+        "overall_sentiment": overall,
+        "bullish_count": bull_c,
+        "bearish_count": bear_c,
+        "neutral_count": neut_c,
+        "headlines": items[:7],
+    }
+
+
 class StockSageHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
@@ -1304,6 +1408,24 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
+            return
+
+        if parsed.path == "/api/news":
+            qs = urllib.parse.parse_qs(parsed.query)
+            sym = qs.get("symbol", ["NVDA"])[0]
+            mkt = qs.get("market", ["US"])[0]
+            try:
+                news_payload = fetch_stock_news(sym, mkt)
+                body = json.dumps(news_payload).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as exc:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(exc), "headlines": []}).encode("utf-8"))
             return
 
         if parsed.path == "/api/health":

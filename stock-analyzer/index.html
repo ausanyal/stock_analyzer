@@ -1315,6 +1315,7 @@
         <span class="badge b-blue" style="font-size:9px">REASONING ENGINE</span>
       </div>
       <div class="chat-hdr-actions">
+        <button class="chat-icon-btn" id="chatExportBtn" title="Export Investment Committee (IC) Markdown Memo">📥 Memo</button>
         <button class="chat-icon-btn" id="chatExpandBtn" title="Expand / Compact Drawer Width">⇔ Wide</button>
         <button class="chat-icon-btn" id="chatClearBtn" title="Reset Conversation">↺ Clear</button>
         <button class="chat-icon-btn" id="chatCloseBtn" title="Close Quant Copilot (Esc)">✕</button>
@@ -3633,13 +3634,16 @@ function updateChatContextUI(onNewTicker = false) {
 
   const peer = getDefaultPeer(sym);
   const sig = p?.signal || 'BUY/HOLD';
+  const bLbl = benchName();
+  const sampleBasket = S.market === 'IN' ? 'RELIANCE, TCS, HDFCBANK, SUNPHARMA' : 'NVDA, AAPL, MSFT, JPM';
   const chips = [
     { lbl: `🎯 Why ${sig}?`, q: `Why is ${sym} rated ${sig} (${p?.score || '—'}/100)? Break down the bull catalysts, bear risks, and factor weights.` },
-    { lbl: `📍 Buy now or pullback?`, q: `Should I buy ${sym} at ${last ? f$(last.close) : 'spot'} or wait for a pullback? Explain the Ideal Entry Zone, POC, EMA20, and Stop-Loss.` },
-    { lbl: `⚖️ Valuation & Stretch`, q: `Is ${sym} overvalued or overextended in the short term? Check its P/E ratio, RSI(14), and ATR stretch vs EMA20.` },
-    { lbl: `🎲 Monte Carlo & Tail Risk`, q: `Explain the ${S.mcResult?.nDays || 63}-day Merton Jump-Diffusion Monte Carlo odds, P5 bear tail, and CVaR for ${sym}.` },
-    { lbl: `🧪 Best Strategy`, q: `Which quants.md systematic strategy performs best on ${sym} and why does it fit the H=${S.quant?.hurst?.toFixed(2) || '0.50'} regime?` },
-    { lbl: `🏆 Weekly Top 5`, q: `Summarize this week's Top 5 Alpha Picks and the Correlation-Penalized Risk-Parity basket for the ${S.market === 'IN' ? 'India NSE' : 'US'} market.` },
+    { lbl: `🔭 Multi-Timeframe (1H/1D/1W)`, q: `Check multi-timeframe confluence for ${sym} across Hourly (1H), Daily (1D), and Weekly (1W) horizons.` },
+    { lbl: `⚡ Stress Test (${bLbl} -5%)`, q: `Stress test ${sym} if ${bLbl} drops -5% in a market shock. What happens to my position and stop-loss?` },
+    { lbl: `📰 Live News & Catalysts`, q: `Fetch the latest live news headlines and sentiment for ${sym} and check if they confirm the technical setup.` },
+    { lbl: `🔍 Screen Squeeze & Value`, q: `Screen this week's universe for unstretched stocks with TTM Squeeze ON or P/E under 35.` },
+    { lbl: `🛠️ Run 21d Bootstrap Sim`, q: `Run 2000 Monte Carlo paths over 21 days using Block Bootstrap for ${sym} and plot custom levels on the chart.` },
+    { lbl: `⚖️ Build 4-Stock Basket`, q: `Build a custom risk-parity portfolio across ${sampleBasket} with ${ccySym()}${S.market === 'IN' ? '5,00,000' : '50,000'}.` },
     { lbl: `⚔️ ${sym} vs ${peer}`, q: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Hurst, Valuation (P/E), and Monte Carlo win odds.` },
   ];
   const chipsEl = document.getElementById('chatChips');
@@ -3837,7 +3841,7 @@ async function computeQuickPeerTelemetry(sym) {
   };
 }
 
-function extractMentionedTickers(text) {
+function extractMentionedTickers(text, includeActive = false) {
   const known = new Set([
     'NVDA','AAPL','MSFT','GOOG','GOOGL','AMZN','META','AMD','AVGO','TSLA','NFLX','JPM','V','LLY','UNH','COST','XOM','WMT','PLTR','COIN','CRM','ORCL','SPY','QQQ','SMH',
     'RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','BHARTIARTL','SBIN','LT','ITC','SUNPHARMA','AXISBANK','BAJFINANCE','NTPC','MARUTI','TITAN','TRENT','WIPRO','HCLTECH','KOTAKBANK','HAL','BEL','NIFTY50'
@@ -3845,11 +3849,505 @@ function extractMentionedTickers(text) {
   const tokens = (text.toUpperCase().match(/\b[A-Z]{1,12}\b/g) || []);
   const found = [];
   for (const tok of tokens) {
-    if (known.has(tok) && tok !== S.ticker && !found.includes(tok)) {
+    if (known.has(tok) && (includeActive || tok !== S.ticker) && !found.includes(tok)) {
       found.push(tok);
     }
   }
   return found;
+}
+
+S.customChartLines = [];
+function clearCustomChartLines() {
+  if (!S.series?.candle) return;
+  for (const l of S.customChartLines) {
+    try { S.series.candle.removePriceLine(l); } catch {}
+  }
+  S.customChartLines = [];
+}
+
+function plotCustomChartLines(levels) {
+  if (!S.series?.candle) return;
+  clearCustomChartLines();
+  for (const lv of levels) {
+    const pl = S.series.candle.createPriceLine({
+      price: lv.price,
+      color: lv.color || '#38bdf8',
+      lineWidth: 2,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: lv.title || 'Custom',
+    });
+    S.customChartLines.push(pl);
+  }
+}
+
+// ── UPGRADE 1: BI-DIRECTIONAL AGENTIC TOOL CALLING (Controls Sim, Chart & Scanner) ──
+async function runAgenticToolCommand(question) {
+  const qLower = question.toLowerCase();
+  const sym = S.ticker || 'NVDA';
+  const last = S.candles[S.candles.length - 1];
+  const price = last.close;
+
+  // Tool 1A: Re-run Monte Carlo with custom parameters & optionally plot on chart
+  const daysMatch = question.match(/(\d{1,3})\s*(?:-|\s)?(?:day|d\b)/i);
+  const pathsMatch = question.match(/(\d{3,4})\s*(?:monte carlo\s+)?paths/i);
+  const wantsBootstrap = /\bbootstrap\b/i.test(qLower);
+  const wantsGbm = /\bgbm\b|geometric brownian/i.test(qLower);
+  const wantsJump = /\bjump\b|merton/i.test(qLower);
+  const isSimCommand = /\b(run|simulate|re-simulate|change|set)\b/i.test(qLower) && (daysMatch || pathsMatch || wantsBootstrap || wantsGbm);
+
+  if (isSimCommand) {
+    const newDays = daysMatch ? clamp(parseInt(daysMatch[1]), 5, 252) : (parseInt(document.getElementById('mcDays').value) || 63);
+    const newPaths = pathsMatch ? clamp(parseInt(pathsMatch[1]), 100, 3000) : (parseInt(document.getElementById('mcPaths').value) || 1000);
+    const newModel = wantsBootstrap ? 'bootstrap' : wantsGbm ? 'gbm' : wantsJump ? 'jump' : document.getElementById('mcModel').value;
+
+    document.getElementById('mcDays').value = String(newDays);
+    document.getElementById('mcPaths').value = String(newPaths);
+    document.getElementById('mcModel').value = newModel;
+
+    const closes = S.candles.map(c => c.close);
+    S.mcResult = runMC(closes, newPaths, newDays, newModel, document.getElementById('mcVolMode').value);
+    drawMC(document.getElementById('mcCanvas'), S.mcResult, S.candles);
+    updateMCStats(S.mcResult);
+    S.proposal = buildTradeProposal();
+    renderProposal(S.proposal);
+
+    const mc = S.mcResult;
+    if (/\bplot\b|\bchart\b|\bline/i.test(qLower)) {
+      plotCustomChartLines([
+        { price: mc.stats.p95, color: '#22c55e', title: `${newDays}d MC P95` },
+        { price: mc.stats.med, color: '#38bdf8', title: `${newDays}d MC Med` },
+        { price: mc.stats.p5, color: '#ef4444', title: `${newDays}d MC P5` },
+      ]);
+    }
+
+    return {
+      html: `
+        <h4>🛠️ Agentic Tool Executed: Live Monte Carlo Re-Simulation (${sym})</h4>
+        <p>✅ I updated the simulation controls (<strong>${newPaths.toLocaleString()} paths · ${newDays} trading days · ${newModel.toUpperCase()}</strong>), re-ran the stochastic engine, and redrew the fan chart${S.customChartLines.length ? ' + plotted P5/Median/P95 lines directly on your candlestick chart' : ''}:</p>
+        <table class="chat-kv-table">
+          <tr><th>Metric (${newDays}d ${newModel.toUpperCase()})</th><th>Live Result</th><th>Implied Move</th></tr>
+          <tr><td><strong>Win Probability P(S_T &gt; S_0)</strong></td><td><strong style="color:var(--green)">${mc.stats.probUp.toFixed(1)}%</strong></td><td>Spot: ${f$(price)}</td></tr>
+          <tr><td><strong>Bear Tail (P5)</strong></td><td style="color:var(--red)">${f$(mc.stats.p5)}</td><td>${fpct(((mc.stats.p5 - price) / price) * 100, 1)}</td></tr>
+          <tr><td><strong>Median Projection (P50)</strong></td><td><strong>${f$(mc.stats.med)}</strong></td><td>${fpct(((mc.stats.med - price) / price) * 100, 1)}</td></tr>
+          <tr><td><strong>Bull Tail (P95)</strong></td><td style="color:var(--green)">${f$(mc.stats.p95)}</td><td>${fpct(((mc.stats.p95 - price) / price) * 100, 1)}</td></tr>
+          <tr><td><strong>5% Expected Shortfall (CVaR)</strong></td><td style="color:var(--red)">${f$(mc.stats.cvarPrice)}</td><td>${fpct(mc.stats.cvarPct, 1)}</td></tr>
+        </table>
+      `,
+      actions: [
+        { label: `🎲 View Updated Monte Carlo Canvas`, scrollPanel: 'mcPanel' },
+        { label: `🗑️ Clear Custom Chart Lines`, onClick: () => clearCustomChartLines() },
+        { label: `↺ Restore Default 63d Merton Jump`, prompt: `Run 1000 Monte Carlo paths over 63 days using jump model` },
+      ]
+    };
+  }
+
+  // Tool 1B: Plot Custom Entry / Stop / Target Levels on Main Candlestick Chart
+  const plotEntryMatch = question.match(/entry\s+(?:at\s+)?[$₹]?([0-9]+(?:\.\d+)?)/i);
+  const plotStopMatch = question.match(/stop(?:-loss)?\s+(?:at\s+)?[$₹]?([0-9]+(?:\.\d+)?)/i);
+  const plotTargetMatch = question.match(/target\s+(?:at\s+)?[$₹]?([0-9]+(?:\.\d+)?)/i);
+  if (/\b(plot|draw|mark)\b/i.test(qLower) && (plotEntryMatch || plotStopMatch || plotTargetMatch)) {
+    const customLines = [];
+    if (plotEntryMatch) customLines.push({ price: parseFloat(plotEntryMatch[1]), color: '#38bdf8', title: 'Custom Entry' });
+    if (plotStopMatch) customLines.push({ price: parseFloat(plotStopMatch[1]), color: '#ef4444', title: 'Custom Stop' });
+    if (plotTargetMatch) customLines.push({ price: parseFloat(plotTargetMatch[1]), color: '#22c55e', title: 'Custom Target' });
+    plotCustomChartLines(customLines);
+    return {
+      html: `
+        <h4>🛠️ Agentic Chart Tool: Plotted Custom Price Lines on ${sym}</h4>
+        <p>✅ I drew <strong>${customLines.length} custom level(s)</strong> directly onto the main TradingView candlestick chart:</p>
+        <ul>${customLines.map(l => `<li><strong>${l.title}:</strong> <code>${f$(l.price)}</code> (${fpct(((l.price - price) / price) * 100, 1)} from spot)</li>`).join('')}</ul>
+      `,
+      actions: [
+        { label: `🗑️ Clear Custom Lines`, onClick: () => clearCustomChartLines() },
+      ]
+    };
+  }
+  return null;
+}
+
+// ── UPGRADE 2: MACRO STRESS-TESTING & SHOCK SIMULATOR ("What if SPY/NIFTY drops -5%?") ──
+function runMacroStressTest(question) {
+  const sym = S.ticker || 'NVDA';
+  const price = S.candles[S.candles.length - 1].close;
+  const q = S.quant;
+  const p = S.proposal;
+  const vp = S.computed.vp;
+  const bLbl = benchName();
+  const beta = q.beta != null ? q.beta : 1.15;
+  const shares = p.recShares || p.shares || 10;
+  const posValue = shares * price;
+
+  const shockMatch = question.match(/(-?\d+(?:\.\d+)?)\s*%/);
+  const userShockPct = shockMatch ? -Math.abs(parseFloat(shockMatch[1])) : -5.0;
+  const scenarios = [...new Set([userShockPct, -3.0, -5.0, -8.0, -12.0])].sort((a, b) => b - a);
+
+  const rowsHtml = scenarios.map(sh => {
+    const expMovePct = beta * sh;
+    const stressedPrice = price * (1 + expMovePct / 100);
+    const pnlDollars = shares * (stressedPrice - price);
+    const breachesStop = stressedPrice <= p.stopLoss;
+    const breachesVal = stressedPrice < vp.val;
+    const status = breachesStop
+      ? '<span class="badge b-red">🛑 STOP TRIGGERED</span>'
+      : breachesVal
+        ? '<span class="badge b-yellow">⚠️ BELOW VAL SUPPORT</span>'
+        : '<span class="badge b-green">✅ HOLDS STRUCTURE</span>';
+    return `
+      <tr>
+        <td><strong>${bLbl} ${sh.toFixed(1)}%</strong></td>
+        <td style="color:var(--red);font-weight:700">${fpct(expMovePct, 1)}</td>
+        <td><code>${f$(stressedPrice)}</code></td>
+        <td style="color:var(--red);font-weight:700">${f$(pnlDollars, 0)}</td>
+        <td>${status}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const stopProtectedLoss = shares * (p.stopLoss - price);
+  return {
+    html: `
+      <h4>⚡ Macro Stress-Test &amp; Drawdown Simulator: ${sym} (β = ${beta.toFixed(2)} vs. ${bLbl})</h4>
+      <p>Modeling how a benchmark drawdown in <strong>${bLbl}</strong> propagates into <strong>${sym} (${f$(price)})</strong> given its empirical CAPM Beta (<code>β = ${beta.toFixed(2)}</code>, <code>R² = ${q.r2 != null ? (q.r2 * 100).toFixed(0) + '%' : 'N/A'}</code>) and your suggested position of <strong>${shares} shares (${f$(posValue, 0)})</strong>:</p>
+      <table class="chat-kv-table">
+        <tr><th>Benchmark Shock</th><th>${sym} Beta Move</th><th>Stressed Price</th><th>Unhedged P&amp;L</th><th>Structural Status</th></tr>
+        ${rowsHtml}
+      </table>
+      <ul>
+        <li><strong>Chandelier Stop Protection (<code>${f$(p.stopLoss)}</code>):</strong> Even in a severe <code>-8% to -12%</code> market selloff, your hard stop caps maximum position loss at <strong>${f$(stopProtectedLoss, 0)}</strong> (≤ 1% of account capital).</li>
+        <li><strong>Volume Profile Cushion:</strong> Fair-value POC sits at <code>${f$(vp.poc)}</code> and Value Area Low (VAL) sits at <code>${f$(vp.val)}</code> (${fpct(((vp.val - price) / price) * 100, 1)} from spot).</li>
+      </ul>
+    `,
+    actions: [
+      { label: `⚡ Stress Test -10% Crash`, prompt: `Stress test ${sym} if ${bLbl} drops -10%` },
+      { label: `🔭 Check Multi-Timeframe Alignment`, prompt: `Check multi-timeframe confluence for ${sym}` },
+    ]
+  };
+}
+
+// ── UPGRADE 3: MULTI-TIMEFRAME CONFLUENCE AUDITOR (1H Intraday vs 1D Daily vs 1W Weekly) ──
+async function runMultiTimeframeConfluence(sym) {
+  const [st1h, st1d, st1w] = await Promise.all([
+    loadStock(sym, '1mo', '1h').catch(() => null),
+    Promise.resolve({ candles: S.candles }),
+    loadStock(sym, '5y', '1wk').catch(() => null),
+  ]);
+
+  const evalTF = (label, cs) => {
+    if (!cs || cs.length < 22) return { label, ok: false };
+    const closes = cs.map(c => c.close);
+    const n = closes.length;
+    const lastP = closes[n - 1];
+    const e20 = ema(closes, 20)[n - 1] ?? lastP;
+    const e50 = ema(closes, Math.min(50, n - 1))[n - 1] ?? lastP;
+    const rv14 = rsi(closes, 14)[n - 1] ?? 50;
+    const mv = macd(closes, 12, 26, 9)[n - 1] || {};
+    const h = calcHurst(closes);
+    const isBull = lastP > e20 && e20 >= e50 * 0.995;
+    const isBear = lastP < e20 && e20 < e50;
+    const state = isBull ? 'BULLISH' : isBear ? 'BEARISH' : 'NEUTRAL';
+    return { label, ok: true, state, e20, e50, rsi: rv14, macdHist: mv.hist || 0, hurst: h };
+  };
+
+  const tfs = [
+    evalTF('Short-Term (1M · 1H Bars)', st1h?.candles),
+    evalTF('Medium-Term (1Y · 1D Bars)', st1d?.candles),
+    evalTF('Secular Trend (5Y · 1W Bars)', st1w?.candles),
+  ].filter(t => t.ok);
+
+  const bullCount = tfs.filter(t => t.state === 'BULLISH').length;
+  const alignVerdict = bullCount === tfs.length
+    ? '🟢 3/3 FULL MULTI-TIMEFRAME BULLISH ALIGNMENT'
+    : bullCount === 0
+      ? '🔴 MULTI-TIMEFRAME BEARISH ALIGNMENT'
+      : `🟡 ${bullCount}/${tfs.length} TIMEFRAMES BULLISH (Tactical Divergence)`;
+
+  const rowsHtml = tfs.map(t => {
+    const bCol = t.state === 'BULLISH' ? 'b-green' : t.state === 'BEARISH' ? 'b-red' : 'b-yellow';
+    return `
+      <tr>
+        <td><strong>${t.label}</strong></td>
+        <td><span class="badge ${bCol}">${t.state}</span></td>
+        <td><code>${f$(t.e20)} / ${f$(t.e50)}</code></td>
+        <td>RSI <strong>${t.rsi.toFixed(1)}</strong></td>
+        <td><code>H = ${t.hurst.toFixed(2)}</code></td>
+      </tr>
+    `;
+  }).join('');
+
+  return {
+    html: `
+      <h4>🔭 Multi-Timeframe Institutional Confluence Matrix: ${sym}</h4>
+      <p>Verdict: <strong>${alignVerdict}</strong></p>
+      <table class="chat-kv-table">
+        <tr><th>Timeframe</th><th>Trend State</th><th>EMA 20 / EMA 50</th><th>Momentum</th><th>Hurst (H)</th></tr>
+        ${rowsHtml}
+      </table>
+      <p><strong>Institutional Interpretation:</strong> ${
+        bullCount === tfs.length
+          ? `All three horizons (Hourly, Daily, and Weekly) are stacked in bullish alignment. Pullbacks toward the 1H/1D EMA20 (<code>${f$(tfs[1]?.e20)}</code>) have institutional tailwinds across every timeframe.`
+          : `Because timeframes are not 100% unanimous (${bullCount}/${tfs.length} bullish), avoid chasing breakouts at market—use limit orders inside the <code>${f$(S.proposal.entryLow)} – ${f$(S.proposal.entryHigh)}</code> confluence zone.`
+      }</p>
+    `,
+    actions: [
+      { label: `📰 Check Live News Catalysts`, prompt: `Fetch the latest live news headlines and sentiment for ${sym}` },
+      { label: `⚡ Run -5% Macro Stress Test`, prompt: `Stress test ${sym} if ${benchName()} drops -5%` },
+    ]
+  };
+}
+
+// ── UPGRADE 4: NATURAL-LANGUAGE CROSS-SECTIONAL SCREENER ──
+function runNaturalLanguageScreener(question) {
+  const qLower = question.toLowerCase();
+  const rankings = S.weeklyData?.rankings || [];
+  if (!rankings.length) {
+    return {
+      html: `<p>The Weekly Universe is still loading. Click below to run the Weekly Scanner first.</p>`,
+      actions: [{ label: `📅 Run Weekly Scanner`, onClick: () => runWeeklyScanner() }]
+    };
+  }
+
+  const peMaxMatch = question.match(/p\/?e\s*(?:under|below|<|<=|less than)\s*(\d+(?:\.\d+)?)/i);
+  const rsiMaxMatch = question.match(/rsi\s*(?:under|below|<|<=|less than)\s*(\d+(?:\.\d+)?)/i);
+  const wantsSqueeze = /\bsqueeze\b/i.test(qLower);
+  const wantsPullback = /\bpullback|oversold|dip\b/i.test(qLower);
+  const wantsStretched = /\bstretched|overvalued|expensive\b/i.test(qLower);
+  const wantsUnstretched = /\bunstretched|reasonable|cheap|value\b/i.test(qLower);
+
+  let filtered = [...rankings];
+  const filtersApplied = [];
+
+  if (wantsSqueeze) {
+    filtered = filtered.filter(r => r.squeeze_status && r.squeeze_status !== 'NORMAL');
+    filtersApplied.push('TTM Squeeze ON / Fired');
+  }
+  if (wantsPullback) {
+    filtered = filtered.filter(r => r.is_pullback_setup || r.connors_rsi_2 < 35 || r.rsi_14 < 48);
+    filtersApplied.push('Pullback / Dip-Buy Setup');
+  }
+  if (wantsStretched && !wantsUnstretched) {
+    filtered = filtered.filter(r => r.is_overvalued || r.is_tech_stretched || r.setup_type.includes('STRETCHED'));
+    filtersApplied.push('Flagged as Stretched / Overvalued');
+  } else if (wantsUnstretched) {
+    filtered = filtered.filter(r => !r.is_overvalued && !r.is_tech_stretched);
+    filtersApplied.push('Unstretched (Passes P/E & ATR Guardrail)');
+  }
+  if (peMaxMatch) {
+    const maxPe = parseFloat(peMaxMatch[1]);
+    filtered = filtered.filter(r => r.pe_ttm != null && r.pe_ttm <= maxPe);
+    filtersApplied.push(`Trailing P/E ≤ ${maxPe}x`);
+  }
+  if (rsiMaxMatch) {
+    const maxRsi = parseFloat(rsiMaxMatch[1]);
+    filtered = filtered.filter(r => r.rsi_14 <= maxRsi);
+    filtersApplied.push(`RSI(14) ≤ ${maxRsi}`);
+  }
+
+  // If combining OR criteria (e.g. "Squeeze ON or P/E under 35") yielded 0 strict AND matches, use union
+  if (filtered.length === 0) {
+    filtered = rankings.filter(r =>
+      (wantsSqueeze && r.squeeze_status !== 'NORMAL') ||
+      (peMaxMatch && r.pe_ttm != null && r.pe_ttm <= parseFloat(peMaxMatch[1])) ||
+      (!r.is_overvalued && !r.is_tech_stretched && r.weekly_alpha_score >= 58)
+    );
+  }
+
+  const topMatches = filtered.slice(0, 6);
+  const rowsHtml = topMatches.map(c => `
+    <tr>
+      <td><strong>#${c.rank} ${c.symbol}</strong></td>
+      <td><strong>${c.weekly_alpha_score}/100</strong> (${c.weekly_action})</td>
+      <td>${c.pe_ttm != null ? c.pe_ttm + 'x' : 'N/A'}</td>
+      <td>${c.rsi_14.toFixed(1)} / ${c.atr_stretch != null ? (c.atr_stretch >= 0 ? '+' : '') + c.atr_stretch + ' ATR' : '—'}</td>
+      <td><span class="badge ${c.squeeze_status !== 'NORMAL' ? 'b-purple' : 'b-blue'}">${c.setup_type}</span></td>
+    </tr>
+  `).join('');
+
+  return {
+    html: `
+      <h4>🔍 Natural-Language Quant Screener (${S.market === 'IN' ? '🇮🇳 NSE Universe' : '🇺🇸 US Universe'})</h4>
+      <p>Applied Filters: <strong>${filtersApplied.length ? filtersApplied.join(' · ') : 'Top Multi-Factor Alpha Leaders'}</strong> — matched <strong>${filtered.length} of ${rankings.length}</strong> stocks:</p>
+      <table class="chat-kv-table">
+        <tr><th>Ticker</th><th>Weekly Alpha</th><th>P/E</th><th>RSI(14) / Stretch</th><th>Setup Archetype</th></tr>
+        ${rowsHtml}
+      </table>
+    `,
+    actions: topMatches.slice(0, 4).map(c => ({ label: `📈 Load ${c.symbol}`, loadTicker: c.symbol }))
+  };
+}
+
+// ── UPGRADE 5: LIVE NEWS & HEADLINE CATALYST FEED (/api/news) ──
+async function runLiveNewsCatalystAudit(sym) {
+  let newsData = null;
+  try {
+    const r = await fetch(`http://127.0.0.1:8765/api/news?symbol=${encodeURIComponent(sym)}&market=${encodeURIComponent(S.market)}&_=${Date.now()}`, {
+      signal: AbortSignal.timeout(9000)
+    });
+    if (r.ok) newsData = await r.json();
+  } catch {}
+
+  const headlines = newsData?.headlines || [];
+  const overall = newsData?.overall_sentiment || 'NEUTRAL';
+  const sentBadge = overall === 'BULLISH' ? 'b-green' : overall === 'BEARISH' ? 'b-red' : 'b-yellow';
+  const p = S.proposal;
+
+  if (!headlines.length) {
+    return {
+      html: `<p>No recent wire headlines returned for <strong>${sym}</strong> right now. Technical telemetry remains the primary driver (Score: <strong>${p.score}/100 · ${p.signal}</strong>).</p>`,
+      actions: [{ label: `🔭 Check Multi-Timeframe Alignment`, prompt: `Check multi-timeframe confluence for ${sym}` }]
+    };
+  }
+
+  const listHtml = headlines.slice(0, 5).map(h => {
+    const b = h.sentiment === 'BULLISH' ? 'b-green' : h.sentiment === 'BEARISH' ? 'b-red' : 'b-gray';
+    return `
+      <li>
+        <span class="badge ${b}" style="font-size:9px">${h.sentiment}</span>
+        <a href="${h.link}" target="_blank" rel="noopener"><strong>${h.title}</strong></a>
+        <span style="color:var(--dim);font-size:10px"> — ${h.publisher} (${h.published})</span>
+      </li>
+    `;
+  }).join('');
+
+  const confirmsTech = (overall === 'BULLISH' && p.score >= 58) || (overall === 'BEARISH' && p.score <= 43);
+  return {
+    html: `
+      <h4>📰 Live News &amp; Catalyst Sentiment Audit: ${sym}</h4>
+      <p>Wire Sentiment Consensus: <span class="badge ${sentBadge}">${overall} (${newsData.bullish_count} Bullish · ${newsData.bearish_count} Bearish · ${newsData.neutral_count} Neutral)</span></p>
+      <ul>${listHtml}</ul>
+      <p><strong>News vs. Price/Volume Confluence:</strong> ${
+        confirmsTech
+          ? `✅ Live headline flow (<strong>${overall}</strong>) directly confirms the quantitative signal (<strong>${p.score}/100 ${p.signal}</strong>).`
+          : `⚖️ Headline tone is <strong>${overall}</strong> while the multi-factor quant score is <strong>${p.score}/100 (${p.signal})</strong>. Stick to disciplined limit entries at <code>${f$(p.entryLow)} – ${f$(p.entryHigh)}</code> and respect the <code>${f$(p.stopLoss)}</code> Chandelier stop.`
+      }</p>
+    `,
+    actions: [
+      { label: `🔭 Check Multi-Timeframe Confluence`, prompt: `Check multi-timeframe confluence for ${sym}` },
+      { label: `⚖️ Valuation & Stretch Check`, prompt: `Is ${sym} overvalued or overextended in the short term?` },
+    ]
+  };
+}
+
+// ── UPGRADE 6: CUSTOM MULTI-TICKER HRP RISK-PARITY PORTFOLIO BUILDER ──
+async function runCustomPortfolioBuilder(question, tickers) {
+  const acct = parseFloat(document.getElementById('acctSize').value) || (S.market === 'IN' ? 500000 : 25000);
+  const capMatch = question.match(/(?:with|for|capital|invest|allocate)\s*[$₹]?\s*([0-9][0-9,]*(?:\.\d+)?)\s*(k|lakh|cr)?/i);
+  let customCap = acct;
+  if (capMatch) {
+    let raw = parseFloat(capMatch[1].replace(/,/g, ''));
+    const u = (capMatch[2] || '').toLowerCase();
+    if (u === 'k') raw *= 1000;
+    else if (u === 'lakh') raw *= 100000;
+    else if (u === 'cr') raw *= 10000000;
+    if (raw >= 500) customCap = raw;
+  }
+
+  const uniqueSyms = [...new Set(tickers)].slice(0, 6);
+  const profiles = (await Promise.all(uniqueSyms.map(s => computeQuickPeerTelemetry(s).catch(() => null)))).filter(Boolean);
+  if (profiles.length < 2) return null;
+
+  const rawW = profiles.map(pr => Math.pow(pr.score / 100, 1.3) / Math.max(pr.annVol / Math.sqrt(252), 0.008));
+  const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
+
+  let totDeployed = 0, totRisk = 0;
+  const rowsHtml = profiles.map((pr, idx) => {
+    const w = rawW[idx] / sumW;
+    const targetAmt = customCap * w;
+    const sh = Math.max(1, Math.floor(targetAmt / pr.price));
+    const actualAmt = sh * pr.price;
+    const stopP = pr.price - 1.8 * pr.atr;
+    const riskAmt = sh * (pr.price - stopP);
+    totDeployed += actualAmt;
+    totRisk += riskAmt;
+    return `
+      <tr>
+        <td><strong>${pr.symbol}</strong></td>
+        <td><strong>${pr.score}/100</strong> (${pr.signal})</td>
+        <td>${(pr.annVol * 100).toFixed(1)}%</td>
+        <td><strong style="color:var(--accent)">${(w * 100).toFixed(1)}%</strong></td>
+        <td><strong>${sh} sh</strong> (${f$(actualAmt, 0)})</td>
+        <td style="color:var(--red)"><code>${f$(stopP)}</code></td>
+      </tr>
+    `;
+  }).join('');
+
+  return {
+    html: `
+      <h4>⚖️ Custom Inverse-Volatility Risk-Parity Basket (${f$(customCap, 0)})</h4>
+      <p>Constructed an institutional risk-parity allocation across <strong>${profiles.map(p => p.symbol).join(', ')}</strong> weighted by multi-factor conviction and inverse daily volatility:</p>
+      <table class="chat-kv-table">
+        <tr><th>Ticker</th><th>Quant Score</th><th>Ann Vol</th><th>Opt Weight</th><th>Shares &amp; Allocation</th><th>1.8× ATR Stop</th></tr>
+        ${rowsHtml}
+      </table>
+      <p><strong>Portfolio Summary:</strong> Total Deployed: <strong>${f$(totDeployed, 0)}</strong> · Cash Buffer: <strong>${f$(Math.max(0, customCap - totDeployed), 0)}</strong> · Combined Basket Stop Risk: <strong style="color:var(--orange)">${f$(totRisk, 0)} (${((totRisk / customCap) * 100).toFixed(2)}%)</strong>.</p>
+    `,
+    actions: profiles.slice(0, 4).map(pr => ({ label: `📈 Load ${pr.symbol}`, loadTicker: pr.symbol }))
+  };
+}
+
+// ── UPGRADE 7: 1-CLICK INSTITUTIONAL IC MEMO EXPORT (.MD DOWNLOAD) ──
+function exportICMemoMarkdown() {
+  if (!S.candles?.length || !S.proposal) return;
+  const sym = S.ticker;
+  const last = S.candles[S.candles.length - 1];
+  const p = S.proposal;
+  const q = S.quant;
+  const vp = S.computed.vp;
+  const mc = S.mcResult;
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  const chatTranscript = S.chatHistory.map(m => `### ${m.role === 'user' ? '👤 Analyst Query' : '🤖 Quant Copilot Response'}\n${m.text}\n`).join('\n');
+
+  const md = `# Institutional Quantitative Research Memo: ${sym} (${S.meta?.longName || sym})
+**Date:** ${dateStr} | **Market:** ${S.market === 'IN' ? 'India (NSE/BSE)' : 'US (NASDAQ/NYSE)'} | **Spot Price:** ${f$(last.close)}
+**Verdict:** ${p.signal} (Composite Quant Score: ${p.score}/100 · Conviction: ${p.conviction})
+
+---
+
+## 1. Executive Trade Proposal & Position Sizing
+- **Ideal Entry Zone:** ${f$(p.entryLow)} – ${f$(p.entryHigh)}
+- **Stop-Loss (1.8× Wilder ATR Chandelier):** ${f$(p.stopLoss)}
+- **Profit Targets:** TP1 (1.5R): ${f$(p.tp1)} | TP2 (2.5R): ${f$(p.tp2)} | TP3 (4.0R): ${f$(p.tp3)}
+- **Recommended Holding Horizon:** ${p.horizon} (${p.horizonSub})
+- **Suggested Position:** ${p.recShares} shares (${f$(p.recDollars, 0)} · ${p.recPct.toFixed(1)}% of portfolio)
+
+## 2. Regime, Risk & CAPM Telemetry (quants.md)
+- **Hurst Exponent (H):** ${q.hurst.toFixed(3)} (${q.regime})
+- **Sharpe / Sortino / Calmar:** ${q.sharpe.toFixed(2)} / ${q.sortino.toFixed(2)} / ${q.calmar.toFixed(2)}
+- **Annualized Volatility & Max Drawdown:** ${(q.annVol * 100).toFixed(2)}% | ${fpct(q.maxDD * 100, 2)}
+- **CAPM vs. ${benchName()}:** Beta = ${q.beta?.toFixed(2) ?? 'N/A'}, Annualized Alpha = ${q.alphaAnn != null ? fpct(q.alphaAnn * 100, 1) : 'N/A'}
+- **Volume Profile (20-Bin):** POC = ${f$(vp.poc)} | Value Area = ${f$(vp.val)} – ${f$(vp.vah)}
+
+## 3. Stochastic Monte Carlo (${mc.nDays} Trading Days · ${mc.model.toUpperCase()})
+- **Win Probability P(S_T > S_0):** ${mc.stats.probUp.toFixed(1)}%
+- **Percentiles:** P5 = ${f$(mc.stats.p5)} | P25 = ${f$(mc.stats.p25)} | Median = ${f$(mc.stats.med)} | P75 = ${f$(mc.stats.p75)} | P95 = ${f$(mc.stats.p95)}
+- **Horizon 5% Expected Shortfall (CVaR):** ${f$(mc.stats.cvarPrice)} (${fpct(mc.stats.cvarPct, 1)})
+
+## 4. Quantitative Thesis
+${p.thesis}
+
+---
+
+## 5. Quant Copilot Q&A Reasoning Transcript
+${chatTranscript || '_No interactive Q&A session recorded prior to export._'}
+`;
+
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `StockSage_IC_Memo_${sym}_${dateStr}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  appendChatMessage(
+    'bot',
+    `<p>📥 <strong>Exported Institutional IC Memo:</strong> Downloaded <code>StockSage_IC_Memo_${sym}_${dateStr}.md</code> containing ${sym}'s full telemetry, execution levels, Monte Carlo percentiles, and our Q&amp;A transcript.</p>`,
+    [],
+    `Quant Copilot · Memo Exported`
+  );
 }
 
 async function buildQuantReasoningReply(question) {
@@ -3875,9 +4373,41 @@ async function buildQuantReasoningReply(question) {
   const pe = S.meta?.trailingPE ?? null;
   const indPe = S.meta?.industryPE ?? null;
 
+  // 0A. Check Bi-Directional Agentic Tool Commands (Live Sim Control & Chart Plotting)
+  const toolReply = await runAgenticToolCommand(question);
+  if (toolReply) return toolReply;
+
+  // 0B. Check Custom Multi-Ticker Portfolio Builder (when 3+ tickers are mentioned)
+  const allMentioned = extractMentionedTickers(question, true);
+  if (allMentioned.length >= 3 && /\b(portfolio|basket|allocate|build|combine|weights|parity)\b/i.test(qLower)) {
+    const portReply = await runCustomPortfolioBuilder(question, allMentioned);
+    if (portReply) return portReply;
+  }
+
+  // 0C. Check Macro Stress-Test & Shock Simulator ("stress test", "if SPY drops", "market crash")
+  if (/\b(stress\s*test|shock|drops?|falls?|crash|selloff|drawdown scenario)\b/i.test(qLower)) {
+    return runMacroStressTest(question);
+  }
+
+  // 0D. Check Multi-Timeframe Confluence Auditor ("multi-timeframe", "1h", "weekly confluence", "timeframes")
+  if (/\b(multi-?timeframe|timeframes?|1h|intraday vs|hourly|confluence matrix)\b/i.test(qLower)) {
+    return await runMultiTimeframeConfluence(sym);
+  }
+
+  // 0E. Check Live News & Headline Catalyst Feed ("news", "headlines", "catalyst")
+  if (/\b(news|headlines?|catalysts?|press|media|wire)\b/i.test(qLower) && !qLower.includes('factor weights')) {
+    return await runLiveNewsCatalystAudit(sym);
+  }
+
+  // 0F. Check Natural-Language Cross-Sectional Screener ("screen", "which stocks", "find stocks", "filter")
+  if (/\b(screen|screener|which stocks|find stocks|filter|stocks with|stocks have)\b/i.test(qLower)) {
+    return runNaturalLanguageScreener(question);
+  }
+
   // Check if user mentioned another ticker for comparison or inspection
   const mentioned = extractMentionedTickers(question);
   const isCompareIntent = /\b(compare|vs\.?|versus|better|against|or)\b/i.test(question) && mentioned.length > 0;
+
 
   // 1. HEAD-TO-HEAD PEER COMPARISON
   if (isCompareIntent || (mentioned.length > 0 && qLower.includes('head-to-head'))) {
@@ -4256,8 +4786,8 @@ async function sendChatMessage(customPrompt) {
 
   try {
     let replyObj = null;
-    const isComparison = /\b(compare|vs\.?|versus|head-to-head)\b/i.test(question) && extractMentionedTickers(question).length > 0;
-    if (S.gemKey && !isComparison) {
+    const isAgenticOrSpecial = /\b(compare|vs\.?|versus|head-to-head|run|simulate|plot|draw|multi-?timeframe|1h|stress\s*test|shock|drops?|falls?|crash|news|headlines?|screen|screener|which stocks|find stocks|portfolio|basket|allocate|build)\b/i.test(question);
+    if (S.gemKey && !isAgenticOrSpecial) {
       const gemHtml = await callGeminiChatWithTelemetry(question);
       if (gemHtml) {
         const det = await buildQuantReasoningReply(question);
@@ -4412,6 +4942,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('chatToggleBtn').addEventListener('click', () => toggleChatDrawer());
   document.getElementById('chatFab').addEventListener('click', () => toggleChatDrawer(true));
   document.getElementById('chatCloseBtn').addEventListener('click', () => toggleChatDrawer(false));
+  document.getElementById('chatExportBtn').addEventListener('click', exportICMemoMarkdown);
   document.getElementById('chatExpandBtn').addEventListener('click', () => {
     const drawer = document.getElementById('chatDrawer');
     const isExp = drawer.classList.toggle('expanded');
