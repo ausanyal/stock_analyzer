@@ -100,6 +100,58 @@ Then open **http://127.0.0.1:8765** in your browser. Use the **`🇺🇸 US Mark
 
 ---
 
+## 🤖 How to Use the Agentic Quant Copilot Chatbot (`💬 Quant Chat`)
+
+Click **`💬 Quant Chat`** in the top header (or the **`💬 Ask Quant Copilot`** floating button in the bottom-right corner) to open the interactive reasoning drawer.
+
+- **Works Out-of-the-Box (`⚡ Quant Engine`)**: Requires **zero API key**—all calculations, multi-timeframe fetches, stress tests, news audits, and chart/simulation tool calls run deterministically against live market data.
+- **Optional Gemini 2.5 LLM Layer (`✨ Gemini AI + Quant`)**: Click the **`⚡ Quant Engine`** pill (or `⚙️` in the header) to add a Gemini API key if you want open-ended LLM synthesis layered on top of the live telemetry.
+- **Resize & Export**: Use **`⇔ Wide`** to expand the drawer (`400px` $\rightarrow$ `540px`), **`↺ Clear`** to reset the session, and **`📥 Memo`** to download a complete `.md` Investment Committee (IC) report.
+
+### 1. One-Click Context-Aware Prompt Chips
+Whenever you load any US or Indian NSE stock, the 8 prompt chips at the top of the drawer automatically adapt to the active ticker and market:
+
+| Chip | What It Does |
+| :--- | :--- |
+| **`🎯 Why BUY/HOLD?`** | Breaks down the exact `0–100` Composite Quant Score across all 5 pillars, listing bullish catalysts and invalidation risks. |
+| **`🔭 Multi-Timeframe (1H/1D/1W)`** | Fetches Intraday Hourly (`1mo/1h`), Daily (`1y/1d`), and Weekly (`5y/1wk`) bars in parallel to score **`3/3 Full Alignment`** vs. **`Timeframe Divergence`**. |
+| **`⚡ Stress Test (SPY / NIFTY -5%)`** | Models `-3%`, `-5%`, `-8%`, and `-12%` benchmark shocks using empirical CAPM $\beta$, showing stressed prices, position P&L, and whether `VAL` or the `1.8× ATR` stop is breached. |
+| **`📰 Live News & Catalysts`** | Calls `/api/news` to fetch real-time headlines, classifies `BULLISH` / `BEARISH` / `NEUTRAL` wire sentiment, and checks whether news confirms the technical score. |
+| **`🔍 Screen Squeeze & Value`** | Filters the scanned Weekly Universe for unstretched stocks with a `TTM Squeeze ON` or `Trailing P/E ≤ 35x`. |
+| **`🛠️ Run 21d Bootstrap Sim`** | **Agentic Tool Call**: Re-runs the Monte Carlo engine with `2,000 paths`, `21 trading days`, and `Block Bootstrap`, redraws the fan chart, and plots custom $P_5 / \text{Med} / P_{95}$ lines on the main candlestick chart. |
+| **`⚖️ Build 4-Stock Basket`** | Constructs a custom inverse-volatility **Risk-Parity (`HRP`) Portfolio** across 4 flagship stocks (`NVDA, AAPL, MSFT, JPM` or `RELIANCE, TCS, HDFCBANK, SUNPHARMA`). |
+| **`⚔️ SYM vs PEER`** | Fetches live telemetry for the closest sector peer and generates a side-by-side scorecard across Quant Score, Hurst $H$, Sharpe/Sortino, Max DD, P/E, RSI/ATR Stretch, and 63d Monte Carlo Win Odds. |
+
+### 2. Example Natural-Language Prompts & Agentic Commands
+
+You can type any question or command into the chat box (`Enter ↵` to send):
+
+- **🛠️ Control the Simulator & Plot on the Chart (Bi-Directional Tool Calling)**:
+  - `"Run 2500 Monte Carlo paths over 30 days using GBM and plot the levels on the chart"`
+  - `"Plot custom entry at 342, stop-loss at 327, and target at 385 on the chart"`
+- **⚡ Macro Stress-Testing & Crash Scenarios**:
+  - `"Stress test NVDA if SPY drops -8% in a market selloff"`
+  - `"What happens to my RELIANCE position if NIFTY 50 falls -6%?"`
+- **🔭 Multi-Timeframe Trend Alignment (`1H` vs `1D` vs `1W`)**:
+  - `"Check multi-timeframe confluence for AAPL"`
+- **📰 Real-Time News & Catalyst Verification**:
+  - `"Fetch the latest live news headlines and sentiment for TCS"`
+- **🔍 Conversational Cross-Sectional Stock Screener**:
+  - `"Screen for stocks with TTM Squeeze ON"`
+  - `"Find unstretched stocks with P/E under 30 and RSI under 55"`
+  - `"Which stocks in this week's playbook are flagged as stretched or overvalued?"`
+- **⚖️ Custom Multi-Stock Risk-Parity Portfolio Builder**:
+  - `"Build a risk-parity portfolio across NVDA, AAPL, MSFT, LLY, JPM with $100,000"`
+  - `"Allocate ₹10,00,000 across RELIANCE, TCS, HDFCBANK, ICICIBANK, SUNPHARMA"`
+- **🧮 Custom Position Sizing & Target Probability Simulator**:
+  - `"What if I invest $75,000 in AAPL? How many shares and what is my dollar risk?"`
+  - `"What is the probability that AAPL reaches $380 over the simulated horizon?"`
+- **⚔️ Head-to-Head Ticker Comparisons**:
+  - `"Compare AAPL vs GOOG head-to-head"`
+  - `"Compare HDFCBANK vs ICICIBANK"`
+
+---
+
 ## 💻 CLI & AI Agent Skill Support
 
 In addition to the web dashboard, **StockSage Quant Pro** includes a standalone JSON telemetry CLI ([`stock-analyzer/quant_cli.py`](stock-analyzer/quant_cli.py)) and a native AI Agent Skill ([`.agents/skills/quant-stock-analyzer/SKILL.md`](.agents/skills/quant-stock-analyzer/SKILL.md)) so you can run institutional equity research directly from your terminal or inside AI coding assistants (Google Antigravity, Gemini CLI, Claude Code, Cursor).
