@@ -73,25 +73,86 @@ Dedicated Indian sector presets (**Nifty 50 Leaders**, **Indian IT & Tech**, **N
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Quick Start: Web Application
 
-### 1. Run the Web Application
 ```bash
 python3 stock-analyzer/server.py
 ```
 Then open **http://127.0.0.1:8765** in your browser. Use the **`🇺🇸 US Market` | `🇮🇳 India (NSE)`** toggle in the top header to switch markets anytime.
 
-### 2. Run the Command-Line Quant Engine (`quant_cli.py`)
+---
+
+## 💻 CLI & AI Agent Skill Support
+
+In addition to the web dashboard, **StockSage Quant Pro** includes a standalone JSON telemetry CLI ([`stock-analyzer/quant_cli.py`](stock-analyzer/quant_cli.py)) and a native AI Agent Skill ([`.agents/skills/quant-stock-analyzer/SKILL.md`](.agents/skills/quant-stock-analyzer/SKILL.md)) so you can run institutional equity research directly from your terminal or inside AI coding assistants (Google Antigravity, Gemini CLI, Claude Code, Cursor).
+
+### 1. Command-Line Quant Engine (`quant_cli.py`)
+
+#### CLI Arguments & Flags
+
+| Argument / Flag | Default | Description |
+| :--- | :--- | :--- |
+| `ticker` | `NVDA` | Single ticker symbol (`AAPL`, `RELIANCE`) or comma-separated watchlist (`NVDA,AMD,AVGO,TSM`) |
+| `--market` | `US` | Market universe: `US` (`NASDAQ/NYSE` in `$`) or `IN` (`NSE/BSE` in `₹`) |
+| `--weekly` | `False` | Run the cross-sectional **Weekly Alpha Playbook & HRP Risk-Parity Basket** scanner |
+| `--preset` | `leaders` | **US**: `leaders`, `ai_semis`, `momentum`, `defensive`, `etfs`<br>**India (`NSE`)**: `in_leaders`, `in_it`, `in_banks`, `in_infra_auto`, `in_pharma_fmcg` |
+| `--range` | `1y` | Historical lookback window (`3mo`, `6mo`, `1y`, `2y`, `5y`) |
+| `--days` | `63` | Merton Jump-Diffusion Monte Carlo forecast horizon in trading days |
+| `--capital` | `$25,000` / `₹5,00,000` | Account capital for `1%-Risk` / `Half-Kelly` position sizing and Weekly Risk-Parity allocation |
+
+#### Single-Ticker Deep Dive Examples
+
 ```bash
-# 🇺🇸 US Single-Ticker Institutional Analysis
+# 🇺🇸 US Equity Analysis (1-Year history, 63-day Merton Jump-Diffusion forecast)
 python3 stock-analyzer/quant_cli.py AAPL --market US --range 1y --days 63
 
-# 🇮🇳 India (NSE) Single-Ticker Institutional Analysis (in ₹ INR vs NIFTY 50)
+# 🇮🇳 India (NSE) Equity Analysis in ₹ INR (benchmarked vs NIFTY 50)
 python3 stock-analyzer/quant_cli.py RELIANCE --market IN --range 1y --days 63
 
-# 🇺🇸 US Weekly Top 5 Alpha Picks & Risk-Parity Portfolio Basket ($25,000)
+# Custom Horizon & Account Capital ($100,000 portfolio, 21-day 1-month forecast)
+python3 stock-analyzer/quant_cli.py NVDA --market US --range 2y --days 21 --capital 100000
+```
+
+#### Weekly Alpha Recommendations & Risk-Parity Basket Examples
+
+```bash
+# 🇺🇸 US Market Leaders Weekly Top 5 Picks & HRP Portfolio Basket ($25,000)
 python3 stock-analyzer/quant_cli.py --weekly --market US --preset leaders --capital 25000
 
-# 🇮🇳 India (NSE) Weekly Top 5 Alpha Picks & Risk-Parity Portfolio Basket (₹5,00,000)
+# 🇺🇸 US AI & Semiconductors Sector Scan
+python3 stock-analyzer/quant_cli.py --weekly --market US --preset ai_semis --capital 50000
+
+# 🇮🇳 India Nifty 50 Leaders Weekly Top 5 Picks & HRP Portfolio Basket (₹5,00,000)
 python3 stock-analyzer/quant_cli.py --weekly --market IN --preset in_leaders --capital 500000
+
+# 🇮🇳 India IT & Tech / Nifty Bank Sector Scans
+python3 stock-analyzer/quant_cli.py --weekly --market IN --preset in_it --capital 500000
+python3 stock-analyzer/quant_cli.py --weekly --market IN --preset in_banks --capital 500000
+
+# Custom Watchlist Cross-Sectional Ranking (US or India NSE)
+python3 stock-analyzer/quant_cli.py "AAPL,MSFT,NVDA,AMZN,GOOG,META" --weekly --market US --capital 25000
+python3 stock-analyzer/quant_cli.py "RELIANCE,TCS,HDFCBANK,ICICIBANK,INFY,SBIN" --weekly --market IN --capital 500000
 ```
+
+---
+
+### 2. AI Agent Skill Integration (`quant-stock-analyzer`)
+
+This repository ships with a pre-configured agent skill at [`.agents/skills/quant-stock-analyzer/SKILL.md`](.agents/skills/quant-stock-analyzer/SKILL.md) underpinned by the quantitative methodology in [`quants.md`](quants.md).
+
+#### How It Works
+When opened in an agentic IDE (such as **Google Antigravity**), the agent automatically detects `.agents/skills/quant-stock-analyzer/SKILL.md` and triggers `quant_cli.py` whenever you ask natural-language questions about stocks, weekly recommendations, price simulations, or trade setups.
+
+#### Example Prompts You Can Ask Your AI Agent
+- *"Analyze `AAPL` and propose whether to buy, hold, or sell with an ideal entry zone, stop-loss, and holding horizon."*
+- *"Give me the top 5 weekly stock recommendations for the US market with a \$25,000 risk-parity basket."*
+- *"Run a parallel weekly alpha scan on Indian Nifty 50 stocks (`in_leaders`) for a ₹5,00,000 portfolio."*
+- *"Compare `TCS` and `INFY` on the NSE using Merton Jump-Diffusion Monte Carlo over the next 63 trading days."*
+- *"Why is `COST` flagged as stretched? Inspect its P/E valuation and ATR stretch vs EMA20."*
+
+#### The 5 Institutional Pillars Enforced by the Skill
+1. **Market Regime & Time-Series Physics**: Reports the **Hurst Exponent ($H$)** (`Trending` when $H > 0.55$, `Mean-Reverting` when $H < 0.45$), **Sharpe**, **Sortino**, **Annualized Volatility**, and **Max Drawdown**.
+2. **Volume Profile & Bar-by-Bar Microstructure**: Anchors support/resistance to the 20-bin **Volume Point of Control (`POC`)**, **Value Area High (`VAH`)**, and **Value Area Low (`VAL`)**, plus institutional volume surges.
+3. **Stochastic Simulation (`Merton Jump-Diffusion` + `EWMA` $\lambda=0.94$)**: Reports win probability $P(S_T > S_0)$, Bear Tail ($P_5$), Median ($P_{50}$), Bull Tail ($P_{95}$), and 5% Expected Shortfall ($\text{CVaR}_{5\%}$).
+4. **Valuation & Overextension Guardrails**: Evaluates trailing `P/E` and distance from `EMA20` in `Wilder ATR(14)` units so stretched momentum stocks are routed to pullback/DCA entries rather than chased at highs.
+5. **Actionable Trade Proposal**: Outputs a `0–100` Composite Quant Score, `Ideal Entry Zone`, $1.8\times\text{ATR}$ Chandelier `Stop-Loss`, `TP1` ($1.5R$) / `TP2` ($2.5R$) / `TP3` ($4.0R$) targets, regime-calibrated `Holding Horizon`, and `1%-Risk` / `Half-Kelly` position sizing.
