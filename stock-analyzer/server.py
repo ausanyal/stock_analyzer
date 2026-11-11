@@ -177,15 +177,15 @@ def fetch_cnbc_quote(sym: str) -> dict:
 
 def _fetch_yahoo_v8_bars(y_sym: str, rng: str) -> list:
     y_rng = rng if rng in ("1mo", "3mo", "6mo", "1y", "2y", "5y") else "1y"
-    for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+    y_cookie, y_crumb = _get_yahoo_session()
+    for host in ("query2.finance.yahoo.com", "query1.finance.yahoo.com"):
         try:
+            crumb_q = f"&crumb={urllib.parse.quote(y_crumb)}" if y_crumb else ""
             url = (
                 f"https://{host}/v8/finance/chart/{urllib.parse.quote(y_sym)}"
-                f"?range={y_rng}&interval=1d&includePrePost=false&events=div%2Csplit"
+                f"?range={y_rng}&interval=1d&includePrePost=false&events=div%2Csplit{crumb_q}"
             )
-            req = urllib.request.Request(url, headers={"User-Agent": HEADERS["User-Agent"], "Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=6) as r:
-                d = json.loads(r.read().decode("utf-8"))
+            d = _yahoo_get_json(url, y_cookie, timeout=7)
             res = ((d.get("chart") or {}).get("result") or [None])[0]
             if not res:
                 continue

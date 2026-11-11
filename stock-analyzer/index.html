@@ -1719,7 +1719,7 @@ async function fetchYahooChartJSON(sym, range, interval) {
   const localUrl = `${apiBase}/api/chart?symbol=${encodeURIComponent(sym)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&market=${encodeURIComponent(mkt)}&_=${Date.now()}`;
   const strategies = [
     async () => {
-      const r = await fetch(localUrl, { signal: AbortSignal.timeout(10000) });
+      const r = await fetch(localUrl, { signal: AbortSignal.timeout(18000) });
       if (!r.ok) throw new Error(`Local proxy HTTP ${r.status}`);
       return r.json();
     },
