@@ -547,6 +547,125 @@
     }
     .wk-alloc-seg { height: 100%; transition: width .3s; }
 
+    /* GOOGLE FINANCE-STYLE OUTLOOK BANNER & FUNDAMENTAL INTELLIGENCE HUB */
+    .gf-outlook-bar {
+      background: linear-gradient(90deg, rgba(17,24,39,.95), rgba(15,23,42,.95));
+      border-bottom: 1px solid var(--border);
+      padding: 6px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11.5px;
+    }
+    .gf-outlook-left {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .gf-outlook-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--bg); border: 1px solid var(--border);
+      padding: 3px 10px; border-radius: 100px; font-weight: 600;
+    }
+    .gf-mini-meter {
+      width: 68px; height: 6px; background: var(--bg3); border-radius: 4px;
+      overflow: hidden; display: inline-flex;
+    }
+    .gf-meta-pills {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .gf-meta-chip {
+      background: rgba(30,41,59,.7); border: 1px solid var(--border);
+      padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--muted);
+    }
+    .gf-meta-chip strong { color: var(--text); }
+    .gf-goto-btn {
+      background: rgba(56,189,248,.12); border: 1px solid rgba(56,189,248,.35);
+      color: var(--accent); padding: 3px 10px; border-radius: 100px;
+      font-size: 11px; font-weight: 700; cursor: pointer; transition: all .15s;
+    }
+    .gf-goto-btn:hover { background: var(--accent); color: #06101a; }
+
+    .intel-tabs {
+      display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--border);
+      margin-bottom: 14px; overflow-x: auto; padding-bottom: 1px;
+    }
+    .intel-tab {
+      background: transparent; border: none; border-bottom: 2.5px solid transparent;
+      color: var(--muted); padding: 8px 14px; font-size: 12px; font-weight: 700;
+      cursor: pointer; transition: all .15s; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .intel-tab:hover { color: var(--text); background: rgba(255,255,255,.02); }
+    .intel-tab.active {
+      color: var(--accent); border-bottom-color: var(--accent);
+      background: rgba(56,189,248,.06);
+    }
+    .intel-pane { display: none; }
+    .intel-pane.active { display: block; }
+
+    .gf-ai-banner {
+      background: linear-gradient(135deg, rgba(56,189,248,.08), rgba(168,85,247,.08));
+      border: 1px solid rgba(56,189,248,.28); border-radius: var(--r);
+      padding: 11px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.55; color: var(--text);
+    }
+    .gf-stats-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 10px 16px; margin-bottom: 14px;
+    }
+    @media (max-width: 960px) { .gf-stats-grid { grid-template-columns: 1fr; } }
+    .gf-stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 0; border-bottom: 1px solid rgba(40,51,71,.55); font-size: 11.5px;
+    }
+    .gf-stat-row:last-child { border-bottom: none; }
+    .gf-stat-lbl { color: var(--muted); }
+    .gf-stat-val { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    .gf-peers-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+    }
+    @media (max-width: 1100px) { .gf-peers-grid { grid-template-columns: repeat(3, 1fr); } }
+    .gf-peer-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: 10px 12px; cursor: pointer; transition: all .14s;
+    }
+    .gf-peer-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+    .gf-two-col {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;
+    }
+    @media (max-width: 960px) { .gf-two-col { grid-template-columns: 1fr; } }
+    .gf-box {
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 13px 15px;
+    }
+    .gf-box h4 {
+      font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); margin: 0 0 10px 0; display: flex; justify-content: space-between; align-items: center;
+    }
+    .gf-bar-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 11.5px;
+    }
+    .gf-bar-lbl { width: 85px; color: var(--muted); font-weight: 600; }
+    .gf-bar-track { flex: 1; height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+    .gf-bar-fill { height: 100%; border-radius: 4px; }
+    .gf-bar-cnt { width: 38px; text-align: right; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .gf-news-list { display: flex; flex-direction: column; gap: 8px; }
+    .gf-news-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm);
+      padding: 10px 13px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+      transition: border-color .14s;
+    }
+    .gf-news-card:hover { border-color: rgba(56,189,248,.5); }
+    .gf-news-title {
+      color: var(--text); font-weight: 700; font-size: 12.5px; text-decoration: none; line-height: 1.4;
+    }
+    .gf-news-title:hover { color: var(--accent); text-decoration: underline; }
+    .gf-news-meta { font-size: 11px; color: var(--dim); margin-top: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
     /* STATUS BAR */
     .statusbar {
       background: var(--bg2); border-top: 1px solid var(--border);
@@ -942,6 +1061,7 @@
     <button class="rng" data-r="2y" data-i="1d">2Y</button>
     <button class="rng" data-r="5y" data-i="1wk">5Y</button>
   </div>
+  <button class="btn btn-ghost" id="intelTopBtn" style="padding:5px 10px;font-size:11.5px;border-color:rgba(56,189,248,.4);color:var(--accent)" title="Jump to Google Finance-Style Overview, Analysis, Earnings, Financials, Holdings, Events & News">🏛️ Fundamentals &amp; News</button>
   <button class="btn btn-purple" id="weeklyTopBtn" style="padding:5px 10px;font-size:11.5px" title="Jump to Weekly Top Stock Recommendations & Risk-Parity Playbook">📅 Weekly Picks</button>
   <button class="btn-chat-hdr" id="chatToggleBtn" title="Open Quant Copilot Chatbot to reason with the analysis">
     <span class="chat-live-dot"></span>
@@ -990,6 +1110,26 @@
 
   <!-- CHART & RESEARCH AREA -->
   <div class="chart-area">
+    <!-- GOOGLE FINANCE-STYLE COMPOSITE OUTLOOK & EXTENDED QUOTE BANNER -->
+    <div class="gf-outlook-bar" id="gfOutlookBar">
+      <div class="gf-outlook-left">
+        <div class="gf-outlook-pill" id="gfOutlookPill">
+          <span>📈 Outlook:</span>
+          <span id="gfOutlookTxt" style="color:var(--muted)">Synthesizing analyst, wire &amp; quant outlook…</span>
+          <div class="gf-mini-meter" id="gfOutlookMeter">
+            <div style="width:50%;background:var(--green)"></div>
+            <div style="width:30%;background:var(--muted)"></div>
+            <div style="width:20%;background:var(--red)"></div>
+          </div>
+        </div>
+        <div class="gf-meta-pills" id="gfMetaPills"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="gf-goto-btn" onclick="jumpToIntelTab('analysis')">Go to Analysis ›</button>
+        <button class="gf-goto-btn" onclick="jumpToIntelTab('news')">Live Wire ›</button>
+      </div>
+    </div>
+
     <div class="chart-toolbar">
       <span class="t-hdr">OVERLAYS:</span>
       <button class="tog on" data-k="ema20">EMA 20</button>
@@ -1059,6 +1199,8 @@
             </div>
           </div>
 
+          <div id="quantStreetDivergenceBox" style="display:none;margin-bottom:12px"></div>
+
           <div class="targets-row">
             <div class="t-card stop">
               <div class="tlbl">🛑 Stop-Loss (Invalidation)</div>
@@ -1094,6 +1236,39 @@
             <button class="btn btn-purple" id="aiRunBtn">✨ Enhance Proposal with Gemini AI</button>
           </div>
           <div class="disclaimer">⚠️ <strong>Quantitative &amp; Educational Disclaimer:</strong> Signals, backtests, Monte Carlo projections, and AI theses are strictly mathematical models for research only and do not constitute investment advice. Past performance does not guarantee future results.</div>
+        </div>
+      </div>
+
+      <!-- 1A. GOOGLE FINANCE-STYLE FUNDAMENTAL & MARKET INTELLIGENCE HUB -->
+      <div class="panel" id="intelPanel">
+        <div class="panel-hdr" onclick="togglePanel('intelPanel')">
+          <div class="panel-title">
+            <span>🏛️</span>
+            Fundamental &amp; Market Intelligence Hub
+            <span class="panel-sub" id="intelHeaderSub">Overview · Wall Street Analysis · Earnings Beat/Miss · 5Q/4Y Financials · Holdings · Events · Live Multi-Source News</span>
+          </div>
+          <span class="panel-chev">▼</span>
+        </div>
+        <div class="panel-body">
+          <div class="intel-tabs" id="intelTabsBar">
+            <button class="intel-tab active" data-tab="overview" onclick="switchIntelTab('overview')">📊 Overview</button>
+            <button class="intel-tab" data-tab="analysis" onclick="switchIntelTab('analysis')">🎯 Analysis</button>
+            <button class="intel-tab" data-tab="earnings" onclick="switchIntelTab('earnings')">📈 Earnings</button>
+            <button class="intel-tab" data-tab="financials" onclick="switchIntelTab('financials')">📑 Financials</button>
+            <button class="intel-tab" data-tab="holdings" onclick="switchIntelTab('holdings')">🏦 Holdings</button>
+            <button class="intel-tab" data-tab="events" onclick="switchIntelTab('events')">📅 Events &amp; Filings</button>
+            <button class="intel-tab" data-tab="news" onclick="switchIntelTab('news')">📰 News &amp; Wire</button>
+          </div>
+
+          <div class="intel-pane active" id="intelPane-overview">
+            <div style="text-align:center;padding:18px;color:var(--muted)">Loading institutional overview &amp; key statistics…</div>
+          </div>
+          <div class="intel-pane" id="intelPane-analysis"></div>
+          <div class="intel-pane" id="intelPane-earnings"></div>
+          <div class="intel-pane" id="intelPane-financials"></div>
+          <div class="intel-pane" id="intelPane-holdings"></div>
+          <div class="intel-pane" id="intelPane-events"></div>
+          <div class="intel-pane" id="intelPane-news"></div>
         </div>
       </div>
 
@@ -2989,6 +3164,10 @@ function buildTradeProposal() {
 
   return {
     signal, conviction, vClass, score,
+    techScore: score,
+    fundScore: null,
+    reclaimLevel: Math.max(le20, lkama),
+    divergenceHtml: '',
     entryLow, entryHigh, stopLoss, tp1, tp2, tp3, rr,
     pTP1, pTP2, pTP3,
     horizon, horizonSub,
@@ -3006,7 +3185,20 @@ function renderProposal(p) {
   const vb = document.getElementById('verdictBox');
   vb.className = 'verdict-box ' + p.vClass;
   document.getElementById('verdictSig').textContent = p.signal;
-  document.getElementById('verdictConf').textContent = `Quant Score: ${p.score}/100 · ${p.conviction}`;
+  document.getElementById('verdictConf').textContent = p.fundScore != null
+    ? `Quantamental: ${p.score}/100 (Tech ${p.techScore} · Street ${p.fundScore}) · ${p.conviction}`
+    : `Quant Score: ${p.score}/100 · ${p.conviction}`;
+
+  const divBox = document.getElementById('quantStreetDivergenceBox');
+  if (divBox) {
+    if (p.divergenceHtml) {
+      divBox.style.display = 'block';
+      divBox.innerHTML = p.divergenceHtml;
+    } else {
+      divBox.style.display = 'none';
+      divBox.innerHTML = '';
+    }
+  }
 
   document.getElementById('pEntry').textContent = `${f$(p.entryLow)} – ${f$(p.entryHigh)}`;
   document.getElementById('pHorizon').textContent = p.horizon;
@@ -3865,6 +4057,808 @@ async function runWeeklyScanner() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+//  GOOGLE FINANCE-STYLE FUNDAMENTAL & MARKET INTELLIGENCE HUB ENGINE
+// ════════════════════════════════════════════════════════════════════════
+S.intel = null;
+S.activeIntelTab = 'overview';
+S.activeFinFreq = 'quarterly';
+S.activeNewsCat = 'ALL';
+
+function switchIntelTab(tabName) {
+  S.activeIntelTab = tabName;
+  document.querySelectorAll('#intelTabsBar .intel-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('#intelPanel .intel-pane').forEach(pane => {
+    pane.classList.toggle('active', pane.id === `intelPane-${tabName}`);
+  });
+}
+
+function jumpToIntelTab(tabName = 'overview') {
+  const panel = document.getElementById('intelPanel');
+  if (!panel) return;
+  panel.classList.remove('collapsed');
+  switchIntelTab(tabName);
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function switchFinFreq(freq) {
+  S.activeFinFreq = freq === 'annual' ? 'annual' : 'quarterly';
+  if (S.intel) renderIntelFinancialsPane(S.intel);
+}
+
+function filterNewsCategory(cat) {
+  S.activeNewsCat = cat || 'ALL';
+  if (S.intel) renderIntelNewsPane(S.intel);
+}
+
+function buildFallbackIntelligence(sym, market) {
+  const last = S.candles?.[S.candles.length - 1] || { open: 100, high: 102, low: 98, close: 100, volume: 10000000 };
+  const prev = S.candles?.[S.candles.length - 2] || last;
+  const ccy = market === 'IN' ? '₹' : '$';
+  const chg = last.close - prev.close;
+  const chgPct = (chg / Math.max(prev.close, 1e-6)) * 100;
+  const w52Hi = S.meta?.fiftyTwoWeekHigh || Math.max(...(S.candles || [last]).map(c => c.high));
+  const w52Lo = S.meta?.fiftyTwoWeekLow || Math.min(...(S.candles || [last]).map(c => c.low));
+  const avgVol = mean((S.candles || [last]).slice(-20).map(c => c.volume));
+  const pScore = S.proposal?.score || 55;
+  const bullPct = clamp(Math.round(pScore * 0.75), 18, 78);
+  const bearPct = clamp(Math.round((100 - pScore) * 0.45), 8, 55);
+  const neutPct = Math.max(0, 100 - bullPct - bearPct);
+
+  return {
+    symbol: sym,
+    market,
+    currency: ccy,
+    outlook: { bullish_pct: bullPct, neutral_pct: neutPct, bearish_pct: bearPct, label: bullPct > bearPct ? 'BULLISH' : 'NEUTRAL' },
+    overview: {
+      symbol: sym,
+      name: S.meta?.longName || sym,
+      exchange: S.meta?.exchangeName || (market === 'IN' ? 'NSE INDIA' : 'NASDAQ/NYSE'),
+      currency: ccy,
+      sector: 'Equities',
+      industry: 'Institutional Coverage',
+      employees_fmt: 'N/A',
+      ai_executive_summary: `${S.meta?.longName || sym} (${sym}) trades at ${f$(last.close)} (${fpct(chgPct, 2)} today) with a 52-week range of ${f$(w52Lo)}–${f$(w52Hi)} and Quantitative Composite Score of ${pScore}/100 (${S.proposal?.signal || 'HOLD'}).`,
+      regular_price: last.close,
+      regular_change: chg,
+      regular_change_pct: chgPct,
+      open: S.meta?.open || last.open,
+      day_high: S.meta?.dayHigh || last.high,
+      day_low: S.meta?.dayLow || last.low,
+      prev_close: prev.close,
+      volume: last.volume,
+      avg_volume: avgVol,
+      market_cap_fmt: S.meta?.marketCapStr || 'N/A',
+      pe_ttm: S.meta?.trailingPE || null,
+      pe_fwd: S.meta?.forwardPE || null,
+      eps_ttm: S.meta?.eps || null,
+      dividend_yield_pct: S.meta?.dividendYield || null,
+      quarterly_dividend: S.meta?.dividendAmount ? Number((S.meta.dividendAmount / 4).toFixed(2)) : null,
+      ex_dividend_date: '—',
+      week_52_high: w52Hi,
+      week_52_low: w52Lo,
+      beta: S.meta?.beta || S.quant?.beta || null,
+      shares_outstanding_fmt: 'N/A',
+      pb_ratio: null,
+    },
+    analysis: {
+      recommendation_key: S.proposal?.signal || 'HOLD',
+      analyst_count: 0,
+      ratings: { strong_buy: 0, buy: 0, hold: 0, sell: 0, strong_sell: 0, bullish_pct: bullPct },
+      price_targets: { low: S.proposal?.stopLoss, mean: S.proposal?.tp2, high: S.proposal?.tp3, current: last.close, upside_pct: S.proposal?.tp2 ? (((S.proposal.tp2 - last.close) / last.close) * 100) : 0 },
+      valuation: { pe_ttm: S.meta?.trailingPE, pe_fwd: S.meta?.forwardPE },
+      profitability: {},
+    },
+    earnings: { next_earnings_date: 'TBD', beat_count_last_4q: 0, eps_history: [], quarterly_chart: [], trend_estimates: [] },
+    financials: { quarterly: [], annual: [], highlights: {} },
+    holdings: { insiders_pct: 0, institutions_pct: 0, public_other_pct: 100, top_institutions: [], insider_transactions: [] },
+    events: { upcoming_events: [], analyst_actions: [], sec_filings: [] },
+    related_stocks: [],
+    news: { overall_sentiment: 'NEUTRAL', bullish_count: 0, bearish_count: 0, neutral_count: 0, headlines: [] },
+  };
+}
+
+function renderIntelFinancialsPane(intel) {
+  const el = document.getElementById('intelPane-financials');
+  if (!el) return;
+  const fin = intel.financials || {};
+  const hl = fin.highlights || {};
+  const isAnnual = S.activeFinFreq === 'annual';
+  const rows = (isAnnual ? fin.annual : fin.quarterly) || [];
+
+  const hlCards = [
+    ['TTM Revenue', hl.total_revenue_ttm_fmt || 'N/A'],
+    ['TTM EBITDA', hl.ebitda_ttm_fmt || 'N/A'],
+    ['Operating Cash Flow', hl.operating_cash_flow_ttm_fmt || 'N/A'],
+    ['Free Cash Flow (TTM)', hl.free_cash_flow_ttm_fmt || 'N/A'],
+    ['Total Cash & Equiv.', hl.total_cash_fmt || 'N/A'],
+    ['Total Debt', hl.total_debt_fmt || 'N/A'],
+    ['Debt / Equity', hl.debt_to_equity_pct != null ? hl.debt_to_equity_pct + '%' : 'N/A'],
+    ['Current Ratio', hl.current_ratio != null ? hl.current_ratio + 'x' : 'N/A'],
+  ].map(([k, v]) => `
+    <div class="mc-card">
+      <div class="lbl">${k}</div>
+      <div class="val" style="font-size:13.5px">${v}</div>
+    </div>
+  `).join('');
+
+  const tableRows = rows.length ? [...rows].reverse().map(r => {
+    const fcfNeg = (r.free_cash_flow || 0) < 0;
+    const niNeg = (r.net_income || 0) < 0;
+    return `
+      <tr>
+        <td><strong>${r.date}</strong></td>
+        <td style="font-weight:700;color:var(--text)">${r.revenue_fmt || '—'}</td>
+        <td>${r.gross_profit_fmt || '—'}</td>
+        <td>${r.operating_income_fmt || '—'}</td>
+        <td>${r.ebitda_fmt || '—'}</td>
+        <td style="font-weight:700;color:${niNeg ? 'var(--red)' : 'var(--green)'}">${r.net_income_fmt || '—'}</td>
+        <td>${r.net_margin_pct != null ? r.net_margin_pct.toFixed(1) + '%' : '—'}</td>
+        <td>${r.eps != null ? f$(r.eps) : '—'}</td>
+        <td>${r.operating_cash_flow_fmt || '—'}</td>
+        <td style="color:var(--orange)">${r.capex_fmt || '—'}</td>
+        <td style="font-weight:700;color:${fcfNeg ? 'var(--red)' : 'var(--green)'}">${r.free_cash_flow_fmt || '—'}</td>
+        <td>${r.total_cash_fmt || '—'}</td>
+        <td>${r.total_debt_fmt || '—'}</td>
+        <td>${r.equity_fmt || '—'}</td>
+      </tr>
+    `;
+  }).join('') : `<tr><td colspan="14" style="text-align:center;color:var(--muted);padding:14px">No granular statement rows reported for this instrument.</td></tr>`;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">
+        📑 Income Statement, Balance Sheet &amp; Cash Flow Telemetry
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn ${!isAnnual ? '' : 'btn-ghost'}" style="padding:4px 10px;font-size:11px" onclick="switchFinFreq('quarterly')">Quarterly (Last 5Q)</button>
+        <button class="btn ${isAnnual ? '' : 'btn-ghost'}" style="padding:4px 10px;font-size:11px" onclick="switchFinFreq('annual')">Annual (Last 4Y)</button>
+      </div>
+    </div>
+    <div class="mc-stats" style="margin-bottom:12px">${hlCards}</div>
+    <div class="bt-table-wrap">
+      <table class="bt-table">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Total Revenue</th>
+            <th>Gross Profit</th>
+            <th>Operating Inc.</th>
+            <th>EBITDA</th>
+            <th>Net Income</th>
+            <th>Net Margin</th>
+            <th>Diluted EPS</th>
+            <th>Operating CF</th>
+            <th>CapEx</th>
+            <th>Free Cash Flow</th>
+            <th>Total Cash</th>
+            <th>Total Debt</th>
+            <th>Stockholders Equity</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderIntelNewsPane(intel) {
+  const el = document.getElementById('intelPane-news');
+  if (!el) return;
+  const nw = intel.news || {};
+  const allItems = nw.headlines || [];
+  const cats = ['ALL', ...new Set(allItems.map(h => h.category).filter(Boolean))];
+  const filtered = S.activeNewsCat === 'ALL' ? allItems : allItems.filter(h => h.category === S.activeNewsCat);
+  const sentCol = nw.overall_sentiment === 'BULLISH' ? 'b-green' : nw.overall_sentiment === 'BEARISH' ? 'b-red' : 'b-yellow';
+
+  const catButtons = cats.map(c => `
+    <button class="chat-chip" style="${S.activeNewsCat === c ? 'background:rgba(56,189,248,.2);color:var(--accent);border-color:var(--accent)' : ''}" onclick="filterNewsCategory('${c}')">${c}</button>
+  `).join('');
+
+  const cardsHtml = filtered.length ? filtered.map(h => {
+    const sBadge = h.sentiment === 'BULLISH' ? 'b-green' : h.sentiment === 'BEARISH' ? 'b-red' : 'b-gray';
+    return `
+      <div class="gf-news-card">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+            <span class="badge ${sBadge}">${h.sentiment}</span>
+            <span class="badge b-blue">${h.category || 'MARKET WIRE'}</span>
+            <span style="font-size:10.5px;color:var(--muted);font-weight:700">${h.publisher}</span>
+            <span style="font-size:10px;color:var(--dim)">· ${h.published}</span>
+            <span style="font-size:9.5px;color:var(--dim);padding:1px 5px;border:1px solid var(--border);border-radius:3px">${h.source_feed || 'Wire'}</span>
+          </div>
+          <a class="gf-news-title" href="${h.link}" target="_blank" rel="noopener noreferrer">${h.title} ↗</a>
+        </div>
+      </div>
+    `;
+  }).join('') : `<div style="text-align:center;padding:18px;color:var(--muted)">No recent wire headlines matched this filter.</div>`;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase">Multi-Source Wire Consensus (Google News + Yahoo Finance):</span>
+        <span class="badge ${sentCol}">${nw.overall_sentiment || 'NEUTRAL'} (${nw.bullish_count || 0} Bullish · ${nw.neutral_count || 0} Neutral · ${nw.bearish_count || 0} Bearish)</span>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">${catButtons}</div>
+    </div>
+    <div class="gf-news-list">${cardsHtml}</div>
+  `;
+}
+
+function renderIntelligenceHub(intel) {
+  if (!intel) return;
+  const ov = intel.overview || {};
+  const an = intel.analysis || {};
+  const er = intel.earnings || {};
+  const hd = intel.holdings || {};
+  const ev = intel.events || {};
+  const nw = intel.news || {};
+  const out = intel.outlook || { bullish_pct: 50, neutral_pct: 30, bearish_pct: 20 };
+
+  // 1. Update Top Google Finance-Style Outlook & Extended Hours Banner
+  const pScore = S.proposal?.score ?? 55;
+  const qBull = clamp(pScore, 15, 85);
+  const qBear = clamp(100 - pScore, 10, 75);
+  const blendBull = Number((0.6 * out.bullish_pct + 0.4 * qBull).toFixed(1));
+  const blendBear = Number((0.6 * out.bearish_pct + 0.4 * (qBear * 0.55)).toFixed(1));
+  const blendNeut = Number(Math.max(0, 100 - blendBull - blendBear).toFixed(1));
+
+  const outTxtEl = document.getElementById('gfOutlookTxt');
+  if (outTxtEl) {
+    outTxtEl.innerHTML = `<strong style="color:var(--green)">${blendBull}% bullish</strong> · <span style="color:var(--muted)">${blendNeut}% neutral</span> · <strong style="color:var(--red)">${blendBear}% bearish</strong>`;
+  }
+  const meterEl = document.getElementById('gfOutlookMeter');
+  if (meterEl) {
+    meterEl.innerHTML = `
+      <div style="width:${blendBull}%;background:var(--green)"></div>
+      <div style="width:${blendNeut}%;background:var(--muted)"></div>
+      <div style="width:${blendBear}%;background:var(--red)"></div>
+    `;
+  }
+
+  const pills = [];
+  if (ov.post_market_price != null) {
+    const pmUp = (ov.post_market_change || 0) >= 0;
+    pills.push(`<span class="gf-meta-chip">🌙 After hours: <strong>${f$(ov.post_market_price)}</strong> <span style="color:${pmUp ? 'var(--green)' : 'var(--red)'};font-weight:700">${fpct(ov.post_market_change_pct || 0, 2)} (${pmUp ? '+' : ''}${f$(ov.post_market_change || 0)})</span></span>`);
+  } else if (ov.pre_market_price != null) {
+    const prUp = (ov.pre_market_change || 0) >= 0;
+    pills.push(`<span class="gf-meta-chip">🌅 Pre-market: <strong>${f$(ov.pre_market_price)}</strong> <span style="color:${prUp ? 'var(--green)' : 'var(--red)'};font-weight:700">${fpct(ov.pre_market_change_pct || 0, 2)}</span></span>`);
+  }
+  if (an.price_targets?.mean) {
+    const upPct = an.price_targets.upside_pct;
+    pills.push(`<span class="gf-meta-chip" style="cursor:pointer" onclick="jumpToIntelTab('analysis')">🎯 Street Target: <strong>${f$(an.price_targets.mean)}</strong> <span style="color:${(upPct || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">(${fpct(upPct, 1)})</span> · ${an.analyst_count || 0} Analysts</span>`);
+  }
+  if (er.next_earnings_date && er.next_earnings_date !== 'TBD') {
+    pills.push(`<span class="gf-meta-chip" style="cursor:pointer" onclick="jumpToIntelTab('earnings')">📅 Next Earnings: <strong>${er.next_earnings_date}</strong>${er.days_until_earnings != null && er.days_until_earnings >= 0 ? ` (${er.days_until_earnings}d)` : ''}</span>`);
+  }
+  if ((nw.headlines || []).length > 0) {
+    const wCol = nw.overall_sentiment === 'BULLISH' ? 'var(--green)' : nw.overall_sentiment === 'BEARISH' ? 'var(--red)' : 'var(--yellow)';
+    pills.push(`<span class="gf-meta-chip" style="cursor:pointer" onclick="jumpToIntelTab('news')">📰 Wire: <strong style="color:${wCol}">${nw.overall_sentiment}</strong> (${nw.headlines.length})</span>`);
+  }
+  const pillsEl = document.getElementById('gfMetaPills');
+  if (pillsEl) pillsEl.innerHTML = pills.join('');
+
+  // 2. Render Tab 1: OVERVIEW (AI Banner + Google Finance 18-Stat Grid + Related Stocks)
+  const ovEl = document.getElementById('intelPane-overview');
+  if (ovEl) {
+    const col1 = [
+      ['Open', f$(ov.open)],
+      ['High', f$(ov.day_high)],
+      ['Low', f$(ov.day_low)],
+      ['Mkt cap', ov.market_cap_fmt || 'N/A'],
+      ['Avg. vol (3M)', fVol(ov.avg_volume)],
+      ['Volume', fVol(ov.volume)],
+    ];
+    const col2 = [
+      ['Dividend yield', ov.dividend_yield_pct != null ? ov.dividend_yield_pct.toFixed(2) + '%' : '—'],
+      ['Quarterly dividend', ov.quarterly_dividend != null ? f$(ov.quarterly_dividend) : '—'],
+      ['Ex-dividend date', ov.ex_dividend_date || '—'],
+      ['P/E ratio (TTM)', ov.pe_ttm != null ? ov.pe_ttm.toFixed(2) : 'N/A'],
+      ['52-wk high', f$(ov.week_52_high)],
+      ['52-wk low', f$(ov.week_52_low)],
+    ];
+    const col3 = [
+      ['EPS (TTM)', ov.eps_ttm != null ? f$(ov.eps_ttm) : 'N/A'],
+      ['Forward P/E', ov.pe_fwd != null ? ov.pe_fwd.toFixed(2) : 'N/A'],
+      ['Beta', ov.beta != null ? ov.beta.toFixed(2) : 'N/A'],
+      ['Shares outstanding', ov.shares_outstanding_fmt || 'N/A'],
+      ['No. of employees', ov.employees_fmt || 'N/A'],
+      ['Price / Book', ov.pb_ratio != null ? ov.pb_ratio.toFixed(2) + 'x' : 'N/A'],
+    ];
+    const renderCol = arr => `<div>${arr.map(([k, v]) => `<div class="gf-stat-row"><span class="gf-stat-lbl">${k}</span><span class="gf-stat-val">${v}</span></div>`).join('')}</div>`;
+
+    const peers = intel.related_stocks || [];
+    const peersHtml = peers.length ? `
+      <div style="font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">
+        🔗 Related Stocks (Click Any Card to Analyze)
+      </div>
+      <div class="gf-peers-grid">
+        ${peers.map(pr => {
+          const isUp = (pr.change_pct || 0) >= 0;
+          return `
+            <div class="gf-peer-card" onclick="selectWeeklyTicker('${pr.symbol}')">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <strong style="color:var(--accent);font-size:13px">${pr.symbol}</strong>
+                <span class="badge ${isUp ? 'b-green' : 'b-red'}">${isUp ? '▲' : '▼'} ${fpct(pr.change_pct, 2)}</span>
+              </div>
+              <div style="font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:3px 0">${pr.name}</div>
+              <div style="font-size:14.5px;font-weight:800;color:var(--text)">${f$(pr.price)}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
+
+    ovEl.innerHTML = `
+      <div class="gf-ai-banner">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;flex-wrap:wrap;gap:6px">
+          <strong style="color:var(--accent);font-size:11.5px">✨ Executive Fundamental &amp; Catalyst Synthesis (${ov.name})</strong>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge b-blue">${ov.sector || 'Equities'}</span>
+            <span class="badge b-purple">${ov.industry || 'Institutional'}</span>
+            ${ov.city_country ? `<span class="badge b-gray">📍 ${ov.city_country}</span>` : ''}
+          </div>
+        </div>
+        <div>${ov.ai_executive_summary || 'Institutional telemetry loaded.'}</div>
+        ${ov.business_summary ? `<details style="margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer"><summary style="font-weight:700;color:var(--dim)">Read Company Profile &amp; Business Description</summary><p style="margin-top:5px;line-height:1.5">${ov.business_summary}…</p></details>` : ''}
+      </div>
+      <div class="gf-stats-grid">
+        ${renderCol(col1)}
+        ${renderCol(col2)}
+        ${renderCol(col3)}
+      </div>
+      ${peersHtml}
+    `;
+  }
+
+  // 3. Render Tab 2: ANALYSIS (Wall Street Ratings, Price Targets, Valuation & Profitability)
+  const anEl = document.getElementById('intelPane-analysis');
+  if (anEl) {
+    const r = an.ratings || {};
+    const tot = Math.max(1, (r.strong_buy || 0) + (r.buy || 0) + (r.hold || 0) + (r.sell || 0) + (r.strong_sell || 0));
+    const ratingBars = [
+      ['Strong Buy', r.strong_buy || 0, '#16a34a'],
+      ['Buy', r.buy || 0, '#22c55e'],
+      ['Hold', r.hold || 0, '#eab308'],
+      ['Sell', r.sell || 0, '#f97316'],
+      ['Strong Sell', r.strong_sell || 0, '#ef4444'],
+    ].map(([lbl, cnt, col]) => `
+      <div class="gf-bar-row">
+        <span class="gf-bar-lbl">${lbl}</span>
+        <div class="gf-bar-track"><div class="gf-bar-fill" style="width:${((cnt / tot) * 100).toFixed(1)}%;background:${col}"></div></div>
+        <span class="gf-bar-cnt">${cnt}</span>
+      </div>
+    `).join('');
+
+    const pt = an.price_targets || {};
+    const val = an.valuation || {};
+    const prof = an.profitability || {};
+    const valRows = [
+      ['Trailing P/E (TTM)', val.pe_ttm != null ? val.pe_ttm + 'x' : 'N/A'],
+      ['Forward P/E (NTM)', val.pe_fwd != null ? val.pe_fwd + 'x' : 'N/A'],
+      ['PEG Ratio (5Y Expected)', val.peg_ratio != null ? val.peg_ratio + 'x' : 'N/A'],
+      ['Price / Sales (TTM)', val.ps_ratio != null ? val.ps_ratio + 'x' : 'N/A'],
+      ['Price / Book', val.pb_ratio != null ? val.pb_ratio + 'x' : 'N/A'],
+      ['EV / EBITDA', val.ev_ebitda != null ? val.ev_ebitda + 'x' : 'N/A'],
+      ['EV / Revenue', val.ev_revenue != null ? val.ev_revenue + 'x' : 'N/A'],
+      ['Enterprise Value', val.enterprise_value_fmt || 'N/A'],
+    ].map(([k, v]) => `<div class="gf-stat-row"><span class="gf-stat-lbl">${k}</span><span class="gf-stat-val">${v}</span></div>`).join('');
+
+    const profRows = [
+      ['Gross Margin', prof.gross_margin_pct],
+      ['Operating Margin', prof.operating_margin_pct],
+      ['Net Profit Margin', prof.profit_margin_pct],
+      ['EBITDA Margin', prof.ebitda_margin_pct],
+      ['Return on Equity (ROE)', prof.roe_pct],
+      ['Return on Assets (ROA)', prof.roa_pct],
+      ['Revenue Growth (YoY)', prof.revenue_growth_yoy_pct],
+      ['Earnings Growth (YoY)', prof.earnings_growth_yoy_pct],
+    ].map(([k, v]) => `<div class="gf-stat-row"><span class="gf-stat-lbl">${k}</span><span class="gf-stat-val" style="color:${v != null ? (v >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text)'}">${v != null ? fpct(v, 1) : 'N/A'}</span></div>`).join('');
+
+    anEl.innerHTML = `
+      <div class="gf-two-col">
+        <div class="gf-box">
+          <h4>
+            <span>🎯 Wall Street Analyst Consensus (${an.analyst_count || 0} Analysts)</span>
+            <span class="badge ${(r.bullish_pct || 0) >= 60 ? 'b-green' : 'b-yellow'}">${an.recommendation_key || 'BUY'} · ${r.bullish_pct ?? 50}% Bullish</span>
+          </h4>
+          ${ratingBars}
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-size:11.5px;font-weight:700;color:var(--muted)">12-Month Analyst Price Target Range</span>
+              ${pt.upside_pct != null ? `<span class="badge ${pt.upside_pct >= 0 ? 'b-green' : 'b-red'}">${fpct(pt.upside_pct, 1)} Implied Upside to Mean</span>` : ''}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center">
+              <div class="mc-card"><div class="lbl">Low Target</div><div class="val" style="color:var(--red);font-size:13px">${f$(pt.low)}</div></div>
+              <div class="mc-card"><div class="lbl">Spot Price</div><div class="val" style="font-size:13px">${f$(pt.current)}</div></div>
+              <div class="mc-card"><div class="lbl">Mean Target</div><div class="val" style="color:var(--accent);font-size:13px">${f$(pt.mean)}</div></div>
+              <div class="mc-card"><div class="lbl">High Target</div><div class="val" style="color:var(--green);font-size:13px">${f$(pt.high)}</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="gf-box">
+          <h4><span>⚖️ Valuation Multiples &amp; Profitability Margins</span><span class="badge b-blue">Fundamental Quality</span></h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 18px">
+            <div>${valRows}</div>
+            <div>${profRows}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 4. Render Tab 3: EARNINGS (EPS Beat/Miss History, Quarterly Revenue/Earnings, Consensus Trend)
+  const erEl = document.getElementById('intelPane-earnings');
+  if (erEl) {
+    const epsHist = er.eps_history || [];
+    const epsRows = epsHist.length ? [...epsHist].reverse().map(e => `
+      <tr>
+        <td><strong>${e.quarter}</strong> <span style="color:var(--dim);font-size:10px">(${e.period})</span></td>
+        <td>${e.eps_estimate != null ? f$(e.eps_estimate) : '—'}</td>
+        <td style="font-weight:700">${e.eps_actual != null ? f$(e.eps_actual) : '—'}</td>
+        <td style="color:${(e.eps_diff || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${e.eps_diff != null ? (e.eps_diff >= 0 ? '+' : '') + f$(e.eps_diff) : '—'}</td>
+        <td style="color:${(e.surprise_pct || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${e.surprise_pct != null ? fpct(e.surprise_pct, 1) : '—'}</td>
+        <td><span class="badge ${e.beat ? 'b-green' : 'b-red'}">${e.beat ? '✅ BEAT' : '❌ MISS'}</span></td>
+      </tr>
+    `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">No quarterly EPS surprise history available.</td></tr>`;
+
+    const trEst = (er.trend_estimates || []).map(t => `
+      <tr>
+        <td><strong>${t.period}</strong> <span style="color:var(--dim);font-size:10px">(${t.end_date})</span></td>
+        <td style="font-weight:700;color:var(--accent)">${t.eps_avg != null ? f$(t.eps_avg) : '—'}</td>
+        <td>${t.eps_low != null && t.eps_high != null ? `${f$(t.eps_low)} – ${f$(t.eps_high)}` : '—'}</td>
+        <td>${t.rev_avg_fmt || '—'}</td>
+        <td style="color:${(t.rev_growth_pct || 0) >= 0 ? 'var(--green)' : 'var(--red)'}">${t.rev_growth_pct != null ? fpct(t.rev_growth_pct, 1) : '—'}</td>
+        <td><span style="color:var(--green)">▲${t.up_last_30d}</span> / <span style="color:var(--red)">▼${t.down_last_30d}</span></td>
+      </tr>
+    `).join('');
+
+    erEl.innerHTML = `
+      <div class="mc-stats" style="margin-bottom:12px">
+        <div class="mc-card"><div class="lbl">Next Earnings Date</div><div class="val" style="color:var(--accent);font-size:13.5px">${er.next_earnings_date || 'TBD'}</div></div>
+        <div class="mc-card"><div class="lbl">Next Qtr EPS Est.</div><div class="val" style="font-size:13.5px">${er.next_eps_estimate?.avg != null ? f$(er.next_eps_estimate.avg) : 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Next Qtr Rev Est.</div><div class="val" style="font-size:13.5px">${er.next_rev_estimate?.avg_fmt || 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Last 4Q Beat Rate</div><div class="val" style="color:var(--green);font-size:13.5px">${er.beat_count_last_4q || 0} / ${er.total_quarters_tracked || 4} Beats</div></div>
+        <div class="mc-card"><div class="lbl">Avg EPS Surprise</div><div class="val" style="color:${(er.avg_surprise_pct || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-size:13.5px">${er.avg_surprise_pct != null ? fpct(er.avg_surprise_pct, 1) : 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Last Earnings Call</div><div class="val" style="font-size:13.5px">${er.last_earnings_call_date || '—'}</div></div>
+      </div>
+      <div class="gf-two-col">
+        <div class="gf-box">
+          <h4><span>📈 Last 4 Quarters EPS Beat / Miss Scorecard</span><span class="badge b-blue">Actual vs. Street</span></h4>
+          <div class="bt-table-wrap">
+            <table class="bt-table">
+              <thead><tr><th>Quarter</th><th>Consensus Est</th><th>Actual EPS</th><th>Diff</th><th>Surprise %</th><th>Result</th></tr></thead>
+              <tbody>${epsRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="gf-box">
+          <h4><span>🔭 Forward Consensus Estimates &amp; 30D Revisions</span><span class="badge b-purple">Guidance &amp; Street</span></h4>
+          <div class="bt-table-wrap">
+            <table class="bt-table">
+              <thead><tr><th>Horizon</th><th>Consensus EPS</th><th>EPS Range</th><th>Est. Revenue</th><th>Rev YoY</th><th>30D Revisions</th></tr></thead>
+              <tbody>${trEst || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">No forward consensus estimates available.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 5. Render Tab 4: FINANCIALS
+  renderIntelFinancialsPane(intel);
+
+  // 6. Render Tab 5: HOLDINGS (Insiders, Institutions, Top Holders, Insider Trades)
+  const hdEl = document.getElementById('intelPane-holdings');
+  if (hdEl) {
+    const instRows = (hd.top_institutions || []).map(i => `
+      <tr>
+        <td><strong>${i.organization}</strong></td>
+        <td style="font-weight:700;color:var(--accent)">${i.pct_held.toFixed(2)}%</td>
+        <td>${i.shares_fmt}</td>
+        <td>${i.value_fmt}</td>
+        <td style="color:${i.change_pct >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${fpct(i.change_pct, 2)}</td>
+        <td style="color:var(--dim);font-size:10.5px">${i.report_date}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">Detailed 13F institutional holder rows not reported for this exchange. Ownership breakdown is shown above.</td></tr>`;
+
+    const insRows = (hd.insider_transactions || []).map(t => `
+      <tr>
+        <td><strong>${t.name}</strong><div style="font-size:10px;color:var(--dim)">${t.relation}</div></td>
+        <td>${t.date}</td>
+        <td><span class="badge ${t.is_buy ? 'b-green' : 'b-red'}">${t.is_buy ? 'BUY' : 'SALE'}</span> <span style="font-size:10.5px;color:var(--muted)">${t.transaction.slice(0, 38)}</span></td>
+        <td>${t.shares_fmt}</td>
+        <td style="font-weight:700">${t.value_fmt}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:12px">No recent Form 4 insider transactions reported.</td></tr>`;
+
+    hdEl.innerHTML = `
+      <div class="mc-stats" style="margin-bottom:10px">
+        <div class="mc-card"><div class="lbl">Insiders / Promoters</div><div class="val" style="color:var(--purple);font-size:14px">${hd.insiders_pct != null ? hd.insiders_pct.toFixed(2) + '%' : 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Institutions Held</div><div class="val" style="color:var(--accent);font-size:14px">${hd.institutions_pct != null ? hd.institutions_pct.toFixed(2) + '%' : 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Public / Other Float</div><div class="val" style="font-size:14px">${hd.public_other_pct != null ? hd.public_other_pct.toFixed(2) + '%' : 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Total Institutions</div><div class="val" style="font-size:14px">${hd.institutions_count ? hd.institutions_count.toLocaleString() : 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Short % of Float</div><div class="val" style="color:var(--orange);font-size:14px">${hd.short_pct_of_float != null ? hd.short_pct_of_float.toFixed(2) + '%' : 'N/A'}</div></div>
+        <div class="mc-card"><div class="lbl">Short Ratio (Days)</div><div class="val" style="font-size:14px">${hd.short_ratio_days != null ? hd.short_ratio_days + 'd' : 'N/A'}</div></div>
+      </div>
+      <div class="wk-alloc-bar" style="margin-bottom:14px">
+        <div class="wk-alloc-seg" style="width:${hd.insiders_pct || 0}%;background:var(--purple)" title="Insiders / Promoters: ${hd.insiders_pct}%"></div>
+        <div class="wk-alloc-seg" style="width:${hd.institutions_pct || 0}%;background:var(--accent)" title="Institutions: ${hd.institutions_pct}%"></div>
+        <div class="wk-alloc-seg" style="width:${hd.public_other_pct || 0}%;background:var(--bg3)" title="Public / Other: ${hd.public_other_pct}%"></div>
+      </div>
+      <div class="gf-two-col">
+        <div class="gf-box">
+          <h4><span>🏦 Top Institutional Holders (13F Filings)</span><span class="badge b-blue">Smart Money</span></h4>
+          <div class="bt-table-wrap">
+            <table class="bt-table">
+              <thead><tr><th>Organization</th><th>% Held</th><th>Shares</th><th>Value</th><th>QoQ Chg</th><th>Report Date</th></tr></thead>
+              <tbody>${instRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="gf-box">
+          <h4><span>👤 Recent Insider Transactions (Form 4)</span><span class="badge b-purple">6M Net: ${hd.net_purchase_6m?.net_shares_fmt || '0'} sh</span></h4>
+          <div class="bt-table-wrap">
+            <table class="bt-table">
+              <thead><tr><th>Insider</th><th>Date</th><th>Action</th><th>Shares</th><th>Value</th></tr></thead>
+              <tbody>${insRows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 7. Render Tab 6: EVENTS & SEC FILINGS
+  const evEl = document.getElementById('intelPane-events');
+  if (evEl) {
+    const upCards = (ev.upcoming_events || []).map(u => `
+      <div class="gf-peer-card" style="cursor:default">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="badge ${u.badge || 'b-blue'}">${u.type}</span>
+          <strong style="color:var(--text);font-size:12px">${u.date}</strong>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px">${u.title}</div>
+        <div style="font-size:11px;color:var(--muted)">${u.detail}</div>
+      </div>
+    `).join('');
+
+    const actRows = (ev.analyst_actions || []).map(a => {
+      const isUp = /raise|upgrade|init|buy|outperform|overweight/i.test((a.pt_action || '') + ' ' + (a.to_grade || '') + ' ' + (a.action || ''));
+      const ptStr = a.current_pt ? `${a.prior_pt ? f$(a.prior_pt) + ' → ' : ''}<strong>${f$(a.current_pt)}</strong>` : '—';
+      return `
+        <tr>
+          <td>${a.date}</td>
+          <td><strong>${a.firm}</strong></td>
+          <td><span class="badge ${isUp ? 'b-green' : 'b-yellow'}">${a.pt_action || a.action}</span></td>
+          <td>${a.from_grade ? `${a.from_grade} → ` : ''}<strong>${a.to_grade}</strong></td>
+          <td>${ptStr}</td>
+        </tr>
+      `;
+    }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:12px">No recent analyst rating changes logged.</td></tr>`;
+
+    const secRows = (ev.sec_filings || []).map(s => `
+      <tr>
+        <td><strong>${s.date}</strong></td>
+        <td><span class="badge b-blue">${s.type}</span></td>
+        <td>${s.url ? `<a href="${s.url}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600;text-decoration:none">${s.title} ↗</a>` : s.title}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:12px">No recent SEC EDGAR filings available for this ticker.</td></tr>`;
+
+    evEl.innerHTML = `
+      ${upCards ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px">${upCards}</div>` : ''}
+      <div class="gf-two-col">
+        <div class="gf-box">
+          <h4><span>📣 Wall Street Upgrades, Downgrades &amp; Target Revisions</span><span class="badge b-blue">Analyst Tape</span></h4>
+          <div class="bt-table-wrap">
+            <table class="bt-table">
+              <thead><tr><th>Date</th><th>Firm</th><th>Action</th><th>Grade</th><th>Price Target</th></tr></thead>
+              <tbody>${actRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="gf-box">
+          <h4><span>🏛️ Official SEC Regulatory Filings (10-K / 10-Q / 8-K)</span><span class="badge b-purple">EDGAR</span></h4>
+          <div class="bt-table-wrap">
+            <table class="bt-table">
+              <thead><tr><th>Date</th><th>Form</th><th>Filing Description &amp; Link</th></tr></thead>
+              <tbody>${secRows}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 8. Render Tab 7: NEWS & WIRE
+  renderIntelNewsPane(intel);
+}
+
+function enrichProposalWithIntelligence(intel) {
+  if (!intel || !S.proposal) return;
+  const p = S.proposal;
+  const an = intel.analysis || {};
+  const er = intel.earnings || {};
+  const fin = intel.financials || {};
+  const nw = intel.news || {};
+  const ov = intel.overview || {};
+
+  let fundScore = 50;
+  const extraCats = [];
+  const extraRisks = [];
+
+  // 1. Wall Street Consensus & Price Target Upside (±24 pts)
+  const upside = an.price_targets?.upside_pct;
+  const bullPct = an.ratings?.bullish_pct;
+  const ptLow = an.price_targets?.low;
+  const ptMean = an.price_targets?.mean;
+  const spot = an.price_targets?.current || ov.regular_price;
+  const belowLowTarget = (spot != null && ptLow != null && spot < ptLow);
+
+  if (an.analyst_count >= 3 && ptMean) {
+    if ((upside || 0) >= 25 && (bullPct || 0) >= 75) {
+      fundScore += belowLowTarget ? 24 : 18;
+      extraCats.push(
+        `Wall Street Consensus (${an.recommendation_key}): ${bullPct}% of ${an.analyst_count} analysts rate Buy with ${f$(ptMean)} mean target (${fpct(upside, 1)} upside${belowLowTarget ? `; trading below even the lowest Street target of ${f$(ptLow)}` : ''})`
+      );
+    } else if ((upside || 0) >= 12 && (bullPct || 0) >= 60) {
+      fundScore += 12;
+      extraCats.push(`Wall Street Consensus (${an.recommendation_key}): ${bullPct}% of ${an.analyst_count} analysts rate Buy with a ${f$(ptMean)} mean target (${fpct(upside, 1)} upside)`);
+    } else if ((upside || 0) <= -5) {
+      fundScore -= 14;
+      extraRisks.push(`Street Valuation Cap: Trading above the ${f$(ptMean)} mean analyst price target (${fpct(upside, 1)} implied downside)`);
+    }
+  }
+
+  // 2. Earnings Beat/Miss Track Record & Upcoming Binary Event Risk (±12 pts)
+  if (er.total_quarters_tracked > 0) {
+    const lastEh = (er.eps_history || [])[er.eps_history.length - 1];
+    if (er.beat_count_last_4q >= 3 && (!lastEh || lastEh.beat)) {
+      fundScore += er.beat_count_last_4q >= 4 ? 10 : 7;
+      extraCats.push(`Earnings Momentum: Beat consensus EPS in ${er.beat_count_last_4q}/${er.total_quarters_tracked} quarters (Avg surprise ${fpct(er.avg_surprise_pct || 0, 1)})`);
+    } else if (lastEh && !lastEh.beat && (lastEh.surprise_pct || 0) < -5) {
+      fundScore -= 10;
+      extraRisks.push(`Recent Earnings Miss: Latest quarter EPS (${f$(lastEh.eps_actual)}) missed Street consensus (${f$(lastEh.eps_estimate)}) by ${fpct(lastEh.surprise_pct, 1)}`);
+    }
+  }
+  if (er.days_until_earnings != null && er.days_until_earnings >= 0 && er.days_until_earnings <= 10) {
+    extraRisks.push(`Binary Event Alert: Next quarterly earnings release in ${er.days_until_earnings} days (${er.next_earnings_date}) — elevated jump-diffusion gap risk`);
+  }
+
+  // 3. Profitability / Free Cash Flow Quality (±10 pts)
+  const qRows = fin.quarterly || [];
+  if (qRows.length > 0) {
+    const lq = qRows[qRows.length - 1];
+    if (lq.free_cash_flow != null && lq.free_cash_flow < 0) {
+      fundScore -= 6;
+      extraRisks.push(`Cash Flow Watch (${lq.date}): Quarterly Free Cash Flow was negative (${lq.free_cash_flow_fmt}) following ${lq.capex_fmt || 'heavy'} capital expenditure`);
+    } else if (lq.free_cash_flow != null && lq.free_cash_flow > 0) {
+      fundScore += (an.profitability?.roe_pct || 0) >= 15 ? 8 : 5;
+      extraCats.push(`Fundamental Quality: Positive quarterly Free Cash Flow (${lq.free_cash_flow_fmt})${an.profitability?.roe_pct != null ? ` with ${fpct(an.profitability.roe_pct, 1)} Return on Equity` : ''}`);
+    }
+  }
+  if ((an.profitability?.revenue_growth_yoy_pct || 0) >= 12) {
+    fundScore += 4;
+  } else if ((an.profitability?.revenue_growth_yoy_pct || 0) < 0) {
+    fundScore -= 4;
+  }
+
+  // 4. Multi-Source News Wire Sentiment (±5 pts)
+  if ((nw.headlines || []).length >= 3) {
+    if (nw.overall_sentiment === 'BULLISH') {
+      fundScore += 5;
+      extraCats.push(`Multi-Source News Wire: Bullish headline flow (${nw.bullish_count} Bullish vs. ${nw.bearish_count} Bearish across Google News & Yahoo Wire)`);
+    } else if (nw.overall_sentiment === 'BEARISH') {
+      fundScore -= 5;
+      extraRisks.push(`Headline Sentiment Headwind: Bearish news tone (${nw.bearish_count} Bearish vs. ${nw.bullish_count} Bullish articles on live wire)`);
+    }
+  }
+
+  fundScore = Math.round(clamp(fundScore, 10, 96));
+
+  if (!p._intelApplied) {
+    p._intelApplied = true;
+    const techScore = p.techScore ?? p.score;
+    p.techScore = techScore;
+    p.fundScore = fundScore;
+
+    // Blend 65% Technical Timing / Systematic Regime + 35% Fundamental & Street Valuation
+    p.score = Math.round(clamp(0.65 * techScore + 0.35 * fundScore, 8, 96));
+
+    const isFallingKnifeVsValue = (techScore <= 38 && fundScore >= 72);
+    const isOverextendedVsStreet = (techScore >= 68 && fundScore <= 38);
+
+    if (isFallingKnifeVsValue) {
+      // Prevent false "STRONG SELL (Short in the Hole)" when a fundamentally elite stock is in a technical pullback below Street targets
+      p.signal = techScore <= 22 ? 'AVOID / WAIT' : 'HOLD (WATCH)';
+      p.vClass = 'hold';
+      p.conviction = 'Tech Bearish vs. Street Bullish';
+    } else if (p.score >= 68) {
+      p.signal = 'STRONG BUY'; p.vClass = 'buy'; p.conviction = 'High Institutional';
+    } else if (p.score >= 55) {
+      p.signal = 'BUY'; p.vClass = 'buy'; p.conviction = 'Medium-High';
+    } else if (p.score <= 28) {
+      p.signal = 'STRONG SELL'; p.vClass = 'sell'; p.conviction = 'High Bearish';
+    } else if (p.score <= 42) {
+      p.signal = 'SELL / REDUCE'; p.vClass = 'sell'; p.conviction = 'Defensive';
+    } else {
+      p.signal = 'HOLD'; p.vClass = 'hold'; p.conviction = 'Neutral / Wait';
+    }
+
+    // Build Dual-Pillar Breakdown & Divergence Explainer Box
+    const techCol = techScore >= 58 ? 'var(--green)' : techScore <= 40 ? 'var(--red)' : 'var(--yellow)';
+    const fundCol = fundScore >= 60 ? 'var(--green)' : fundScore <= 40 ? 'var(--red)' : 'var(--yellow)';
+    const reclaimStr = p.reclaimLevel ? f$(p.reclaimLevel) : 'EMA 20';
+
+    let divExplain = '';
+    if (isFallingKnifeVsValue) {
+      divExplain = `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(56,189,248,.2);font-size:11.5px;color:var(--text);line-height:1.5">
+          <strong style="color:var(--yellow)">⚡ Why Wall Street Says BUY (${fundScore}/100) While Quant Technicals Are Bearish (${techScore}/100):</strong><br/>
+          • <strong>Wall Street Lens (12–24M Fundamental Value):</strong> ${bullPct ?? 80}% of ${an.analyst_count || 'covering'} analysts rate ${S.ticker} a Buy with a <strong>${f$(ptMean)}</strong> mean target (${fpct(upside, 1)} upside)${belowLowTarget ? ` — spot (${f$(spot)}) is even below the most bearish analyst target on Wall Street (${f$(ptLow)})` : ''}.<br/>
+          • <strong>StockSage Quant Lens (1–8W Price &amp; Trend Protection):</strong> Price is currently in a <strong>"Falling Knife" downtrend</strong> below its moving averages and Volume POC, with systematic strategies sitting in <strong>CASH</strong> to protect capital during active institutional distribution.<br/>
+          • <strong>Actionable Resolution:</strong> Do <em>not</em> short in the hole below Wall Street's bear-case floor, and do <em>not</em> catch an unconfirmed falling knife. Keep on Watchlist and wait for price to reclaim <strong>${reclaimStr} (EMA 20 / KAMA)</strong> before entering long.
+        </div>
+      `;
+    } else if (isOverextendedVsStreet) {
+      divExplain = `
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(56,189,248,.2);font-size:11.5px;color:var(--text);line-height:1.5">
+          <strong style="color:var(--yellow)">⚡ Momentum vs. Valuation Divergence:</strong> Technical momentum is strongly bullish (<strong>${techScore}/100</strong>), but price has outrun Wall Street's 12-month consensus target (<strong>${fundScore}/100</strong>). Trail stops tightly using the 1.8× ATR Chandelier floor.
+        </div>
+      `;
+    }
+
+    p.divergenceHtml = `
+      <div class="gf-ai-banner" style="margin-bottom:0;background:rgba(15,23,42,.78);border-color:rgba(56,189,248,.28)">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:center">
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted)">📈 Technical Timing (65% Wt)</div>
+            <div style="font-size:15px;font-weight:800;color:${techCol}">${techScore}/100 <span style="font-size:11px;font-weight:600">(${techScore >= 58 ? 'Uptrend' : techScore <= 38 ? 'Downtrend / Cash' : 'Neutral'})</span></div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted)">🏛️ Street &amp; Fundamentals (35% Wt)</div>
+            <div style="font-size:15px;font-weight:800;color:${fundCol}">${fundScore}/100 <span style="font-size:11px;font-weight:600">(${an.recommendation_key || 'Consensus'} · ${fpct(upside || 0, 1)} Target)</span></div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--muted)">⚖️ Quantamental Verdict</div>
+            <div style="font-size:15px;font-weight:800;color:var(--accent)">${p.score}/100 · ${p.signal}</div>
+          </div>
+        </div>
+        ${divExplain}
+      </div>
+    `;
+
+    p.catalysts = [...extraCats, ...(p.catalysts || [])].slice(0, 5);
+    p.risks = [...extraRisks, ...(p.risks || [])].slice(0, 5);
+    if (ov.ai_executive_summary) {
+      p.thesis = `${p.thesis} Fundamental & Street Intelligence: ${ov.ai_executive_summary}`;
+    }
+    renderProposal(p);
+    updateSidebar();
+  }
+}
+
+async function fetchAndRenderIntelligence(sym, market) {
+  try {
+    const url = `http://127.0.0.1:8765/api/fundamentals?symbol=${encodeURIComponent(sym)}&market=${encodeURIComponent(market)}&_=${Date.now()}`;
+    let data = null;
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (r.ok) data = await r.json();
+    } catch {}
+    if (!data || !data.overview) {
+      data = buildFallbackIntelligence(sym, market);
+    }
+    if (S.ticker === sym) {
+      S.intel = data;
+      enrichProposalWithIntelligence(data);
+      renderIntelligenceHub(data);
+    }
+  } catch {}
+}
+
+// ════════════════════════════════════════════════════════════════════════
 //  MAIN ANALYZE ORCHESTRATOR
 // ════════════════════════════════════════════════════════════════════════
 function togglePanel(id) {
@@ -3934,6 +4928,7 @@ async function analyze() {
     document.getElementById('mainPaneLbl').textContent = `${ticker} · ${intv.toUpperCase()} (${S.candles.length} bars) · POC ${f$(S.computed.vp.poc)}`;
     setStatus(`${ticker} · ${S.candles.length} bars analyzed · Last: ${f$(last.close)} · Verdict: ${S.proposal.signal} (${S.proposal.score}/100)`);
     updateChatContextUI(true);
+    fetchAndRenderIntelligence(ticker, S.market);
   } catch (err) {
     setStatus('Error: ' + err.message);
     document.getElementById('scPrice').innerHTML = `<div class="err">❌ ${err.message}</div>`;
@@ -4002,12 +4997,12 @@ function updateChatContextUI(onNewTicker = false) {
   const sampleBasket = S.market === 'IN' ? 'RELIANCE, TCS, HDFCBANK, SUNPHARMA' : 'NVDA, AAPL, MSFT, JPM';
   const chips = [
     { lbl: `🎯 Why ${sig}?`, q: `Why is ${sym} rated ${sig} (${p?.score || '—'}/100)? Break down the bull catalysts, bear risks, and factor weights.` },
+    { lbl: `🏛️ Earnings & Financials`, q: `Audit ${sym}'s quarterly earnings beat/miss history, revenue & free cash flow, Wall Street analyst price targets, and institutional holdings.` },
     { lbl: `🔭 Multi-Timeframe (1H/1D/1W)`, q: `Check multi-timeframe confluence for ${sym} across Hourly (1H), Daily (1D), and Weekly (1W) horizons.` },
     { lbl: `⚡ Stress Test (${bLbl} -5%)`, q: `Stress test ${sym} if ${bLbl} drops -5% in a market shock. What happens to my position and stop-loss?` },
     { lbl: `📰 Live News & Catalysts`, q: `Fetch the latest live news headlines and sentiment for ${sym} and check if they confirm the technical setup.` },
     { lbl: `🔍 Screen Squeeze & Value`, q: `Screen this week's universe for unstretched stocks with TTM Squeeze ON or P/E under 35.` },
     { lbl: `🛠️ Run 21d Bootstrap Sim`, q: `Run 2000 Monte Carlo paths over 21 days using Block Bootstrap for ${sym} and plot custom levels on the chart.` },
-    { lbl: `⚖️ Build 4-Stock Basket`, q: `Build a custom risk-parity portfolio across ${sampleBasket} with ${ccySym()}${S.market === 'IN' ? '5,00,000' : '50,000'}.` },
     { lbl: `⚔️ ${sym} vs ${peer}`, q: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Hurst, Valuation (P/E), and Monte Carlo win odds.` },
   ];
   const chipsEl = document.getElementById('chatChips');
@@ -5054,6 +6049,37 @@ async function buildQuantReasoningReply(question) {
     };
   }
 
+  // 7B. FUNDAMENTALS, EARNINGS, FINANCIALS, HOLDINGS, ANALYST TARGETS & EVENTS
+  if (/\b(fundamental|earnings|financials|revenue|cash flow|fcf|capex|balance sheet|debt|margin|roe|analyst|ratings?|upgrade|downgrade|holdings?|institutional|insiders?|sec filing|10-k|10-q|8-k|dividend)\b/i.test(qLower)) {
+    const it = S.intel || buildFallbackIntelligence(sym, S.market);
+    const ov = it.overview || {};
+    const an = it.analysis || {};
+    const er = it.earnings || {};
+    const fin = it.financials || {};
+    const hd = it.holdings || {};
+    const lq = (fin.quarterly || [])[Math.max(0, (fin.quarterly || []).length - 1)] || {};
+    return {
+      html: `
+        <h4>🏛️ Institutional Fundamental, Earnings &amp; Street Intelligence: ${sym}</h4>
+        <p>${ov.ai_executive_summary || ''}</p>
+        <table class="chat-kv-table">
+          <tr><th>Pillar</th><th>Latest Reading</th><th>Institutional Context</th></tr>
+          <tr><td><strong>Street Consensus</strong></td><td><strong>${an.recommendation_key || 'BUY'} (${an.analyst_count || 0} Analysts)</strong></td><td>Mean Target: <code>${f$(an.price_targets?.mean)}</code> (${fpct(an.price_targets?.upside_pct, 1)} upside)</td></tr>
+          <tr><td><strong>Earnings Beat/Miss</strong></td><td><strong>${er.beat_count_last_4q || 0}/${er.total_quarters_tracked || 4} Quarters Beat</strong></td><td>Next Earnings: <code>${er.next_earnings_date || 'TBD'}</code> (Avg Surprise ${fpct(er.avg_surprise_pct, 1)})</td></tr>
+          <tr><td><strong>Latest Quarter (${lq.date || 'Q'})</strong></td><td>Rev <strong>${lq.revenue_fmt || 'N/A'}</strong> · Net Inc <strong>${lq.net_income_fmt || 'N/A'}</strong></td><td>FCF: <code>${lq.free_cash_flow_fmt || 'N/A'}</code> · CapEx: <code>${lq.capex_fmt || 'N/A'}</code></td></tr>
+          <tr><td><strong>Balance Sheet</strong></td><td>Cash <strong>${fin.highlights?.total_cash_fmt || 'N/A'}</strong> vs Debt <strong>${fin.highlights?.total_debt_fmt || 'N/A'}</strong></td><td>Debt/Equity: <code>${fin.highlights?.debt_to_equity_pct != null ? fin.highlights.debt_to_equity_pct + '%' : 'N/A'}</code> · Current Ratio: <code>${fin.highlights?.current_ratio ?? 'N/A'}</code></td></tr>
+          <tr><td><strong>Holdings &amp; Short</strong></td><td>Institutions <strong>${hd.institutions_pct ?? 0}%</strong> · Insiders <strong>${hd.insiders_pct ?? 0}%</strong></td><td>Short Float: <code>${hd.short_pct_of_float != null ? hd.short_pct_of_float + '%' : 'N/A'}</code> (${hd.institutions_count || 0} funds)</td></tr>
+        </table>
+      `,
+      actions: [
+        { label: `🎯 Open Analysis Tab`, onClick: () => jumpToIntelTab('analysis') },
+        { label: `📈 Open Earnings Tab`, onClick: () => jumpToIntelTab('earnings') },
+        { label: `📑 Open Financials Tab`, onClick: () => jumpToIntelTab('financials') },
+        { label: `🏦 Open Holdings Tab`, onClick: () => jumpToIntelTab('holdings') },
+      ]
+    };
+  }
+
   // 8. DEFAULT / WHY THIS VERDICT & MULTI-FACTOR SCORE BREAKDOWN
   const catsHtml = (p.catalysts || []).slice(0, 4).map(c => `<li>✅ ${c}</li>`).join('');
   const risksHtml = (p.risks || []).slice(0, 3).map(r => `<li>⚠️ ${r}</li>`).join('');
@@ -5245,6 +6271,9 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('wkPreset').value = 'custom';
       runWeeklyScanner();
     }
+  });
+  document.getElementById('intelTopBtn')?.addEventListener('click', () => {
+    jumpToIntelTab('overview');
   });
   document.getElementById('weeklyTopBtn').addEventListener('click', () => {
     const p = document.getElementById('weeklyPanel');
