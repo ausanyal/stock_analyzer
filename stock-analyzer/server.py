@@ -20,7 +20,8 @@ import time
 import urllib.parse
 import urllib.request
 
-PORT = 8765
+PORT = int(os.environ.get("PORT", 8765))
+HOST = os.environ.get("HOST", "0.0.0.0")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 HEADERS = {
@@ -2378,6 +2379,10 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         if parsed.path == "/api/shutdown":
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                self.send_response(403)
+                self.end_headers()
+                return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -2394,13 +2399,13 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     http.server.ThreadingHTTPServer.allow_reuse_address = True
     try:
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), StockSageHandler)
+        server = http.server.ThreadingHTTPServer((HOST, PORT), StockSageHandler)
     except OSError:
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{PORT}/api/shutdown", timeout=2)
         except Exception:
             pass
         time.sleep(0.5)
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), StockSageHandler)
-    print(f"StockSage Quant Pro Server (Nasdaq + CNBC Live Feed) running at http://127.0.0.1:{PORT}", flush=True)
+        server = http.server.ThreadingHTTPServer((HOST, PORT), StockSageHandler)
+    print(f"StockSage Quant Pro Server (Nasdaq + CNBC Live Feed) running at http://{HOST}:{PORT}", flush=True)
     server.serve_forever()

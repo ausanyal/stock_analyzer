@@ -1708,8 +1708,9 @@ async function fetchYahooChartJSON(sym, range, interval) {
   const ySym = mkt === 'IN' ? (sym.toUpperCase() === 'NIFTY50' ? '^NSEI' : (sym.includes('.') ? sym : `${sym}.NS`)) : sym;
   const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ySym)}?interval=${interval}&range=${range}&events=div,split&includePrePost=false`;
 
-  // 1. Try local Python StockSage server proxy first (http://127.0.0.1:8765 — US Nasdaq/CNBC + India NSE Moneycontrol/Groww)
-  const localUrl = `http://127.0.0.1:8765/api/chart?symbol=${encodeURIComponent(sym)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&market=${encodeURIComponent(mkt)}&_=${Date.now()}`;
+  // 1. Try StockSage Python server proxy first (works on Cloud Run, Compute Engine VM, or local http://127.0.0.1:8765)
+  const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
+  const localUrl = `${apiBase}/api/chart?symbol=${encodeURIComponent(sym)}&range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}&market=${encodeURIComponent(mkt)}&_=${Date.now()}`;
   const strategies = [
     async () => {
       const r = await fetch(localUrl, { signal: AbortSignal.timeout(10000) });
@@ -4037,7 +4038,8 @@ async function runWeeklyScanner() {
   statusEl.textContent = `Running parallel cross-sectional factor & correlation scan (${S.market === 'IN' ? 'NSE India' : 'US Market'})…`;
 
   try {
-    const url = `http://127.0.0.1:8765/api/weekly-scan?market=${encodeURIComponent(S.market)}&preset=${encodeURIComponent(preset)}&symbols=${encodeURIComponent(customInput)}&capital=${acct}&_=${Date.now()}`;
+    const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
+    const url = `${apiBase}/api/weekly-scan?market=${encodeURIComponent(S.market)}&preset=${encodeURIComponent(preset)}&symbols=${encodeURIComponent(customInput)}&capital=${acct}&_=${Date.now()}`;
     let data = null;
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
@@ -4841,7 +4843,8 @@ function enrichProposalWithIntelligence(intel) {
 
 async function fetchAndRenderIntelligence(sym, market) {
   try {
-    const url = `http://127.0.0.1:8765/api/fundamentals?symbol=${encodeURIComponent(sym)}&market=${encodeURIComponent(market)}&_=${Date.now()}`;
+    const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
+    const url = `${apiBase}/api/fundamentals?symbol=${encodeURIComponent(sym)}&market=${encodeURIComponent(market)}&_=${Date.now()}`;
     let data = null;
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
@@ -5539,7 +5542,8 @@ function runNaturalLanguageScreener(question) {
 async function runLiveNewsCatalystAudit(sym) {
   let newsData = null;
   try {
-    const r = await fetch(`http://127.0.0.1:8765/api/news?symbol=${encodeURIComponent(sym)}&market=${encodeURIComponent(S.market)}&_=${Date.now()}`, {
+    const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
+    const r = await fetch(`${apiBase}/api/news?symbol=${encodeURIComponent(sym)}&market=${encodeURIComponent(S.market)}&_=${Date.now()}`, {
       signal: AbortSignal.timeout(9000)
     });
     if (r.ok) newsData = await r.json();
