@@ -37,6 +37,7 @@ _INDIA_FUND_CACHE = {}
 _NEWS_CACHE = {}
 _INTEL_CACHE = {}
 _YAHOO_SESSION = {"cookie": "", "crumb": "", "ts": 0.0}
+_GCP_META_CACHE = {"token": "", "project": "", "exp": 0.0}
 
 IST_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
@@ -2327,6 +2328,263 @@ def fetch_stock_intelligence(symbol: str, market: str = "US") -> dict:
     return dict(result_payload)
 
 
+def _get_gcp_vertex_auth() -> tuple:
+    now = time.time()
+    with _CACHE_LOCK:
+        if _GCP_META_CACHE["token"] and (now < _GCP_META_CACHE["exp"] - 60):
+            return _GCP_META_CACHE["token"], _GCP_META_CACHE["project"]
+
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCLOUD_PROJECT") or ""
+    token = ""
+    meta_headers = {"Metadata-Flavor": "Google"}
+    try:
+        if not project_id:
+            req_p = urllib.request.Request(
+                "http://metadata.google.internal/computeMetadata/v1/project/project-id",
+                headers=meta_headers,
+            )
+            with urllib.request.urlopen(req_p, timeout=1.5) as rp:
+                project_id = rp.read().decode("utf-8").strip()
+        req_t = urllib.request.Request(
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+            headers=meta_headers,
+        )
+        with urllib.request.urlopen(req_t, timeout=1.5) as rt:
+            td = json.loads(rt.read().decode("utf-8"))
+            token = td.get("access_token") or ""
+            expires_in = float(td.get("expires_in") or 1800.0)
+            if token:
+                with _CACHE_LOCK:
+                    _GCP_META_CACHE["token"] = token
+                    _GCP_META_CACHE["project"] = project_id or "natural-name-407402"
+                    _GCP_META_CACHE["exp"] = now + expires_in
+    except Exception:
+        pass
+    return token, (project_id or "natural-name-407402")
+
+
+def _format_intel_brief_for_llm(intel: dict) -> str:
+    if not intel or not intel.get("overview"):
+        return ""
+    ov = intel.get("overview") or {}
+    an = intel.get("analysis") or {}
+    er = intel.get("earnings") or {}
+    fin = intel.get("financials") or {}
+    hd = intel.get("holdings") or {}
+    nw = intel.get("news") or {}
+    ccy = intel.get("currency") or "$"
+    sym = intel.get("symbol") or ov.get("symbol") or ""
+    pt = an.get("price_targets") or {}
+    rt = an.get("ratings") or {}
+    prof = an.get("profitability") or {}
+    val = an.get("valuation") or {}
+    hl = fin.get("highlights") or {}
+    q_rows = fin.get("quarterly") or []
+    lq = q_rows[-1] if q_rows else {}
+    headlines = [f"'{h.get('title')}' ({h.get('publisher')}, {h.get('sentiment')})" for h in (nw.get("headlines") or [])[:4]]
+
+    lines = [
+        f"=== VERIFIED SERVER FUNDAMENTALS & INTELLIGENCE FOR {sym} ({ov.get('name')}) ===",
+        f"• Spot: {ccy}{ov.get('regular_price')} ({ov.get('regular_change_pct') or 0:+.2f}%) | After-Hours: {ov.get('post_market_price') or 'N/A'} | Pre-Market: {ov.get('pre_market_price') or 'N/A'} | 52W Range: {ccy}{ov.get('week_52_low')}–{ccy}{ov.get('week_52_high')} | Mkt Cap: {ov.get('market_cap_fmt')}",
+        f"• Valuation: Trailing P/E={val.get('pe_ttm')}x, Forward P/E={val.get('pe_fwd')}x, PEG={val.get('peg_ratio')}x, P/S={val.get('ps_ratio')}x, P/B={val.get('pb_ratio')}x, EV/EBITDA={val.get('ev_ebitda')}x, Div Yield={ov.get('dividend_yield_pct')}%",
+        f"• Wall Street Consensus ({an.get('analyst_count')} Analysts): {an.get('recommendation_key')} ({rt.get('bullish_pct')}% Bullish: {rt.get('strong_buy')} Strong Buy, {rt.get('buy')} Buy, {rt.get('hold')} Hold, {rt.get('sell')} Sell, {rt.get('strong_sell')} Strong Sell) | 12M Target: Mean {ccy}{pt.get('mean')} ({pt.get('upside_pct') or 0:+.1f}% upside), Low {ccy}{pt.get('low')}, High {ccy}{pt.get('high')}",
+        f"• Profitability & Growth: Gross Margin={prof.get('gross_margin_pct')}%, Operating Margin={prof.get('operating_margin_pct')}%, Net Margin={prof.get('profit_margin_pct')}%, ROE={prof.get('roe_pct')}%, ROA={prof.get('roa_pct')}%, Rev Growth YoY={prof.get('revenue_growth_yoy_pct')}%, Earnings Growth YoY={prof.get('earnings_growth_yoy_pct')}%",
+        f"• Earnings Track Record: Beat {er.get('beat_count_last_4q')}/{er.get('total_quarters_tracked')} recent quarters (Avg Surprise: {er.get('avg_surprise_pct') or 0:+.1f}%) | Next Earnings Date: {er.get('next_earnings_date')} ({er.get('days_until_earnings')} days away) | Next Qtr Consensus EPS: {er.get('next_eps_estimate', {}).get('avg')}, Rev: {er.get('next_rev_estimate', {}).get('avg_fmt')}",
+        f"• Latest Quarter Financials ({lq.get('date', 'Latest Q')}): Revenue={lq.get('revenue_fmt')}, Net Income={lq.get('net_income_fmt')} ({lq.get('net_margin_pct')}% margin), Operating Cash Flow={lq.get('operating_cash_flow_fmt')}, CapEx={lq.get('capex_fmt')}, Free Cash Flow={lq.get('free_cash_flow_fmt')}",
+        f"• Balance Sheet & Ownership: Cash={hl.get('total_cash_fmt')}, Total Debt={hl.get('total_debt_fmt')}, Debt/Equity={hl.get('debt_to_equity_pct')}%, Current Ratio={hl.get('current_ratio')}x | Institutions={hd.get('institutions_pct')}%, Insiders={hd.get('insiders_pct')}%, Short % of Float={hd.get('short_pct_of_float')}%",
+        f"• Live News Wire ({nw.get('overall_sentiment')} — {nw.get('bullish_count')} Bullish / {nw.get('bearish_count')} Bearish): " + ("; ".join(headlines) if headlines else "No major headlines."),
+    ]
+    return "\n".join(lines)
+
+
+def handle_ai_chat(payload: dict) -> dict:
+    question = (payload.get("question") or "").strip()
+    if not question:
+        raise ValueError("Empty question")
+
+    sym = (payload.get("symbol") or "NVDA").upper().strip()
+    market = (payload.get("market") or "US").upper().strip()
+    mode = (payload.get("mode") or "analyst").lower().strip()
+    client_telemetry = payload.get("telemetry") or ""
+    history = payload.get("history") or []
+    user_api_key = (payload.get("api_key") or os.environ.get("GEMINI_API_KEY") or "").strip()
+    preferred_model = (payload.get("model") or "gemini-2.5-flash").strip()
+
+    # Fetch live server fundamentals for the active symbol + up to 2 mentioned peer tickers
+    known_tickers = set(
+        WEEKLY_PRESETS["leaders"]
+        + WEEKLY_PRESETS["ai_semis"]
+        + WEEKLY_PRESETS["momentum"]
+        + WEEKLY_PRESETS["defensive"]
+        + INDIA_WEEKLY_PRESETS["in_leaders"]
+        + INDIA_WEEKLY_PRESETS["in_it_banks"]
+        + INDIA_WEEKLY_PRESETS["in_auto_pharma"]
+        + [sym]
+    )
+    tokens = re.findall(r"\b[A-Z]{2,12}\b", question.upper())
+    extra_syms = []
+    for t in tokens:
+        if t in known_tickers and t != sym and t not in extra_syms:
+            extra_syms.append(t)
+    syms_to_enrich = [sym] + extra_syms[:2]
+
+    intel_blocks = []
+    for s in syms_to_enrich:
+        try:
+            s_mkt = "IN" if s in INDIA_COMPANY_SLUGS or market == "IN" else "US"
+            intel_d = fetch_stock_intelligence(s, s_mkt)
+            intel_blocks.append(_format_intel_brief_for_llm(intel_d))
+        except Exception:
+            pass
+
+    mode_instructions = {
+        "analyst": (
+            "MODE: ⚡ INSTITUTIONAL QUANTAMENTAL ANALYST (Balanced & Rigorous).\n"
+            "Synthesize both the 1–8 week Quantitative/Technical signals (Trend, Momentum, Volume POC, Monte Carlo, 7-Strategy Backtest + Walk-Forward Meta-Boss) "
+            "and the 12-month Fundamental/Wall Street signals (Analyst Price Targets, Earnings Beat/Miss streak, Revenue/Margin growth, CapEx vs. Free Cash Flow, News). "
+            "Whenever Technicals and Wall Street Analysts disagree, explicitly explain the time-horizon conflict (short-term Falling Knife protection vs. 12-month DCF valuation discount) and give the exact price trigger to resolve it."
+        ),
+        "eli5": (
+            "MODE: 👶 EXPLAIN LIKE I'M 5 (Plain English & Vivid Analogies).\n"
+            "Explain the financial, technical, and quantitative concepts using simple, memorable everyday analogies (like weather radar vs. house appraisal, stretched rubber bands, bowling bumpers, or a lemonade stand's cash register). "
+            "Still include the key real numbers in parentheses so the user learns what they mean, and finish with a bold 'Bottom Line in 1 Sentence'."
+        ),
+        "debate": (
+            "MODE: ⚔️ BULL VS. BEAR INSTITUTIONAL DEBATE.\n"
+            "Structure your response into three crisp sections:\n"
+            "1. ### 🟢 The Bull Case (3 Strongest Data-Backed Arguments)\n"
+            "2. ### 🔴 The Bear Case (3 Strongest Data-Backed Risks)\n"
+            "3. ### ⚖️ Portfolio Manager's Verdict & Exact Trigger Levels (Who wins right now and what exact price level flips the script)."
+        ),
+        "devil": (
+            "MODE: 🦈 DEVIL'S ADVOCATE & CHIEF RISK OFFICER AUDIT.\n"
+            "Your job is to protect the user's capital by ruthlessly stress-testing their thesis on this stock. "
+            "Expose hidden traps in the data (such as overhead Volume POC supply, negative Free Cash Flow from heavy CapEx, upcoming binary earnings gap risk, negative Sharpe/Sortino, or shorting in the hole below Wall Street's bear target). "
+            "Give specific downside levels (Stop-Loss, Bear Tail P5, CVaR) and position-sizing guardrails."
+        ),
+    }
+    selected_mode_prompt = mode_instructions.get(mode, mode_instructions["analyst"])
+
+    hist_lines = []
+    for m in history[-8:]:
+        r_lbl = "USER" if m.get("role") == "user" else "COPILOT"
+        txt = re.sub(r"\s+", " ", str(m.get("text") or "")).strip()[:500]
+        if txt:
+            hist_lines.append(f"{r_lbl}: {txt}")
+    hist_block = "\n".join(hist_lines) if hist_lines else "(Start of conversation)"
+
+    system_prompt = f"""You are StockSage Quant Pro Copilot (powered by Gemini Flash), an elite institutional quantitative & fundamental ("Quantamental") equity research partner.
+
+{selected_mode_prompt}
+
+FORMATTING & GROUNDING RULES:
+1. Ground every claim in the live telemetry & fundamental intelligence provided below. Cite exact prices, percentages, ratios, and strategy names in **bold** or `code` spans.
+2. Keep your response structured, high-signal, and easy to scan (use `###` subheadings, bullet points, and Markdown tables `| Metric | Value | Takeaway |` when comparing numbers).
+3. At the very end of your response, on a new final line, ALWAYS output exactly 3 short, insightful follow-up questions the user can click next, formatted strictly as:
+FOLLOW_UPS: Question 1? | Question 2? | Question 3?
+
+=== CLIENT-SIDE LIVE QUANT & TECHNICAL TELEMETRY ===
+{client_telemetry}
+
+=== SERVER-SIDE LIVE FUNDAMENTALS, EARNINGS, CASH FLOW & NEWS ===
+{chr(10).join(intel_blocks)}
+
+=== RECENT CONVERSATION HISTORY ===
+{hist_block}
+
+=== USER QUESTION ===
+{question}"""
+
+    gen_body = {
+        "contents": [{"role": "user", "parts": [{"text": system_prompt}]}],
+        "generationConfig": {
+            "temperature": 0.25,
+            "maxOutputTokens": 1400,
+        },
+    }
+    body_bytes = json.dumps(gen_body).encode("utf-8")
+
+    models_order = []
+    for m in (preferred_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
+        if m and m not in models_order:
+            models_order.append(m)
+
+    raw_reply = None
+    used_model = None
+    used_provider = None
+
+    # 1. Try Gemini Developer API if an API key is provided
+    if user_api_key:
+        for m in models_order:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(m)}:generateContent?key={urllib.parse.quote(user_api_key)}"
+                req = urllib.request.Request(url, data=body_bytes, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=18) as r:
+                    resp_d = json.loads(r.read().decode("utf-8"))
+                txt = (((resp_d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [{}])[0].get("text")
+                if txt and txt.strip():
+                    raw_reply = txt.strip()
+                    used_model = m
+                    used_provider = "Gemini API"
+                    break
+            except Exception:
+                continue
+
+    # 2. Try Google Cloud Vertex AI (Zero-Key Cloud Run Service Account Authentication)
+    if not raw_reply:
+        gcp_token, gcp_proj = _get_gcp_vertex_auth()
+        if gcp_token and gcp_proj:
+            for loc in ("us-central1", "asia-south1", "global"):
+                if raw_reply:
+                    break
+                host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
+                for m in models_order:
+                    try:
+                        url = (
+                            f"https://{host}/v1/projects/{urllib.parse.quote(gcp_proj)}"
+                            f"/locations/{loc}/publishers/google/models/{urllib.parse.quote(m)}:generateContent"
+                        )
+                        req = urllib.request.Request(
+                            url,
+                            data=body_bytes,
+                            headers={
+                                "Authorization": f"Bearer {gcp_token}",
+                                "Content-Type": "application/json",
+                            },
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req, timeout=18) as r:
+                            resp_d = json.loads(r.read().decode("utf-8"))
+                        txt = (((resp_d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [{}])[0].get("text")
+                        if txt and txt.strip():
+                            raw_reply = txt.strip()
+                            used_model = m
+                            used_provider = f"Vertex AI ({loc})"
+                            break
+                    except Exception:
+                        continue
+
+    if not raw_reply:
+        return {"ok": False, "error": "Gemini Flash not reachable (enable Vertex AI aiplatform.googleapis.com on Cloud Run or add a free Gemini API key in ⚙️ Settings)."}
+
+    follow_ups = []
+    clean_lines = []
+    for line in raw_reply.splitlines():
+        if line.strip().upper().startswith("FOLLOW_UPS:"):
+            raw_f = line.split(":", 1)[1]
+            follow_ups = [q.strip().strip("*`-• ") for q in raw_f.split("|") if q.strip()][:3]
+        else:
+            clean_lines.append(line)
+
+    return {
+        "ok": True,
+        "model": used_model,
+        "provider": used_provider,
+        "markdown": "\n".join(clean_lines).strip(),
+        "follow_ups": follow_ups,
+    }
+
+
 class StockSageHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
@@ -2340,6 +2598,28 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(200)
+        self.end_headers()
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/chat":
+            try:
+                content_len = int(self.headers.get("Content-Length") or 0)
+                raw_body = self.rfile.read(content_len) if content_len > 0 else b"{}"
+                payload = json.loads(raw_body.decode("utf-8"))
+                result = handle_ai_chat(payload)
+                body = json.dumps(result).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as exc:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": str(exc)}).encode("utf-8"))
+            return
+        self.send_response(404)
         self.end_headers()
 
     def do_GET(self):

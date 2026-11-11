@@ -1502,7 +1502,15 @@
         <span>🟢</span>
         <span id="chatCtxTicker">Loading telemetry…</span>
       </div>
-      <span class="chat-mode-pill" id="chatModePill" title="Click to configure optional Gemini API key for LLM deep reasoning">⚡ Quant Engine</span>
+      <span class="chat-mode-pill gemini" id="chatModePill" title="Click to configure Gemini model or optional API key">✨ Gemini 2.5 Flash</span>
+    </div>
+
+    <div class="chat-chips" id="chatPersonaBar" style="border-bottom:1px solid var(--border);background:rgba(15,23,42,.55);padding:5px 10px;gap:5px">
+      <span style="font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;align-self:center;margin-right:2px">Mode:</span>
+      <button class="chat-chip persona-btn active" data-mode="analyst" style="border-color:var(--accent);color:var(--accent);background:rgba(56,189,248,.14)" title="Balanced Institutional Quant + Fundamental Synthesis">⚡ Flash Analyst</button>
+      <button class="chat-chip persona-btn" data-mode="eli5" title="Explain Like I'm 5 using simple everyday analogies">👶 ELI5</button>
+      <button class="chat-chip persona-btn" data-mode="debate" title="Argue 3 Bull Points vs. 3 Bear Points + Judge Verdict">⚔️ Bull vs. Bear</button>
+      <button class="chat-chip persona-btn" data-mode="devil" title="Ruthlessly stress-test your thesis and expose hidden risks">🦈 Devil's Advocate</button>
     </div>
 
     <div class="chat-chips" id="chatChips">
@@ -3573,18 +3581,15 @@ function renderMicrostructureUI() {
 //  GEMINI AI ENHANCEMENT (WITH MODEL FALLBACK)
 // ════════════════════════════════════════════════════════════════════════
 async function runAI() {
-  const key = document.getElementById('inlineKey').value.trim() || S.gemKey;
-  if (!key) {
-    document.getElementById('settingsModal').classList.remove('hidden');
-    return;
-  }
   if (!S.candles.length) return;
-
-  S.gemKey = key;
-  localStorage.setItem('ss_key', key);
+  const key = document.getElementById('inlineKey').value.trim() || S.gemKey || '';
+  if (key) {
+    S.gemKey = key;
+    localStorage.setItem('ss_key', key);
+  }
   const btn = document.getElementById('aiRunBtn');
   btn.disabled = true;
-  btn.textContent = '⏳ Synthesizing Deep Quant + AI Research…';
+  btn.textContent = '⏳ Synthesizing Deep Quant + Gemini 2.5 Flash Research…';
 
   try {
     const { ticker, candles, quant, mcResult, btResults, proposal, computed } = S;
@@ -3624,34 +3629,65 @@ Return ONLY this JSON object:
 
     const modelsToTry = [S.gemModel, 'gemini-2.5-flash', 'gemini-2.0-flash'];
     let aiData = null, lastErr = null;
-    for (const m of [...new Set(modelsToTry)]) {
-      try {
-        const resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.15 },
-            }),
+    const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
+
+    // 1. Try server-side Vertex AI / Gemini endpoint first (works on Cloud Run without an API key)
+    try {
+      const sr = await fetch(`${apiBase}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: prompt,
+          symbol: ticker,
+          market: S.market,
+          mode: 'analyst',
+          telemetry: buildLiveDossierForLLM(),
+          api_key: key,
+          model: S.gemModel || 'gemini-2.5-flash',
+        }),
+        signal: AbortSignal.timeout(22000),
+      });
+      if (sr.ok) {
+        const sd = await sr.json();
+        const match = (sd.markdown || '').match(/\{[\s\S]*\}/);
+        if (match) aiData = JSON.parse(match[0]);
+      }
+    } catch {}
+
+    // 2. Fallback to direct browser API call if user entered a key
+    if (!aiData && key) {
+      for (const m of [...new Set(modelsToTry)]) {
+        try {
+          const resp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.15 },
+              }),
+            }
+          );
+          if (!resp.ok) {
+            const e = await resp.json().catch(() => ({}));
+            throw new Error(e.error?.message || `HTTP ${resp.status}`);
           }
-        );
-        if (!resp.ok) {
-          const e = await resp.json().catch(() => ({}));
-          throw new Error(e.error?.message || `HTTP ${resp.status}`);
+          const d = await resp.json();
+          const raw = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const match = raw.match(/\{[\s\S]*\}/);
+          if (!match) throw new Error('Invalid JSON response from model');
+          aiData = JSON.parse(match[0]);
+          break;
+        } catch (err) {
+          lastErr = err;
         }
-        const d = await resp.json();
-        const raw = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (!match) throw new Error('Invalid JSON response from model');
-        aiData = JSON.parse(match[0]);
-        break;
-      } catch (err) {
-        lastErr = err;
       }
     }
-    if (!aiData) throw lastErr || new Error('Failed to reach Gemini API');
+    if (!aiData) {
+      if (!key) document.getElementById('settingsModal').classList.remove('hidden');
+      throw lastErr || new Error('Enable Vertex AI (aiplatform.googleapis.com) on Cloud Run or enter a free Gemini API key in Settings.');
+    }
 
     // Merge AI refinements into proposal
     const merged = {
@@ -4952,6 +4988,18 @@ async function analyze() {
 // ════════════════════════════════════════════════════════════════════════
 S.chatHistory = [];
 S.chatOpen = false;
+S.chatPersona = 'analyst';
+
+function setChatPersona(mode) {
+  S.chatPersona = mode || 'analyst';
+  document.querySelectorAll('#chatPersonaBar .persona-btn').forEach(btn => {
+    const isAct = btn.dataset.mode === S.chatPersona;
+    btn.classList.toggle('active', isAct);
+    btn.style.borderColor = isAct ? 'var(--accent)' : '';
+    btn.style.color = isAct ? 'var(--accent)' : '';
+    btn.style.background = isAct ? 'rgba(56,189,248,.14)' : '';
+  });
+}
 
 function toggleChatDrawer(forceOpen) {
   const drawer = document.getElementById('chatDrawer');
@@ -4991,34 +5039,31 @@ function updateChatContextUI(onNewTicker = false) {
 
   const modeEl = document.getElementById('chatModePill');
   if (modeEl) {
-    if (S.gemKey) {
-      modeEl.textContent = '✨ Gemini AI + Quant';
-      modeEl.classList.add('gemini');
-    } else {
-      modeEl.textContent = '⚡ Quant Engine';
-      modeEl.classList.remove('gemini');
-    }
+    modeEl.textContent = S.gemKey ? `✨ ${S.gemModel || 'Gemini 2.5 Flash'}` : '✨ Gemini 2.5 Flash';
+    modeEl.classList.add('gemini');
   }
 
   const peer = getDefaultPeer(sym);
   const sig = p?.signal || 'BUY/HOLD';
   const bLbl = benchName();
-  const sampleBasket = S.market === 'IN' ? 'RELIANCE, TCS, HDFCBANK, SUNPHARMA' : 'NVDA, AAPL, MSFT, JPM';
   const chips = [
-    { lbl: `🎯 Why ${sig}?`, q: `Why is ${sym} rated ${sig} (${p?.score || '—'}/100)? Break down the bull catalysts, bear risks, and factor weights.` },
-    { lbl: `🏛️ Earnings & Financials`, q: `Audit ${sym}'s quarterly earnings beat/miss history, revenue & free cash flow, Wall Street analyst price targets, and institutional holdings.` },
-    { lbl: `🔭 Multi-Timeframe (1H/1D/1W)`, q: `Check multi-timeframe confluence for ${sym} across Hourly (1H), Daily (1D), and Weekly (1W) horizons.` },
+    { lbl: `🎯 Why ${sig}?`, q: `Why is ${sym} rated ${sig} (${p?.score || '—'}/100)? Explain the Technical Score vs. Wall Street Fundamental Score and what triggers the next move.` },
+    { lbl: `⚔️ Bull vs. Bear Debate`, q: `Run a head-to-head Bull vs. Bear debate on ${sym} using its technicals, Wall Street price targets, earnings, and cash flow.`, mode: 'debate' },
+    { lbl: `👶 Explain Setup ELI5`, q: `Explain ${sym}'s current chart setup, Monte Carlo simulation, and fundamental valuation like I'm 5 using simple analogies.`, mode: 'eli5' },
+    { lbl: `🦈 Devil's Advocate Audit`, q: `Play Devil's Advocate on ${sym}: what are the biggest hidden risks or traps in its chart, Volume Profile POC, CapEx/Free Cash Flow, or valuation right now?`, mode: 'devil' },
+    { lbl: `🏛️ Earnings & Cash Flow`, q: `Audit ${sym}'s quarterly earnings beat/miss history, revenue & free cash flow vs CapEx, Wall Street analyst price targets, and institutional holdings.` },
     { lbl: `⚡ Stress Test (${bLbl} -5%)`, q: `Stress test ${sym} if ${bLbl} drops -5% in a market shock. What happens to my position and stop-loss?` },
-    { lbl: `📰 Live News & Catalysts`, q: `Fetch the latest live news headlines and sentiment for ${sym} and check if they confirm the technical setup.` },
-    { lbl: `🔍 Screen Squeeze & Value`, q: `Screen this week's universe for unstretched stocks with TTM Squeeze ON or P/E under 35.` },
-    { lbl: `🛠️ Run 21d Bootstrap Sim`, q: `Run 2000 Monte Carlo paths over 21 days using Block Bootstrap for ${sym} and plot custom levels on the chart.` },
-    { lbl: `⚔️ ${sym} vs ${peer}`, q: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Hurst, Valuation (P/E), and Monte Carlo win odds.` },
+    { lbl: `📰 Live News & Catalysts`, q: `Fetch the latest live news headlines and sentiment for ${sym} and reason on how they impact the investment thesis.` },
+    { lbl: `⚔️ ${sym} vs ${peer}`, q: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Fundamentals (P/E, FCF, Analyst Upside), and Monte Carlo win odds.` },
   ];
   const chipsEl = document.getElementById('chatChips');
   if (chipsEl) {
     chipsEl.innerHTML = chips.map((c, idx) => `<button class="chat-chip" data-idx="${idx}">${c.lbl}</button>`).join('');
     chipsEl.querySelectorAll('.chat-chip').forEach((btn, idx) => {
-      btn.addEventListener('click', () => sendChatMessage(chips[idx].q));
+      btn.addEventListener('click', () => {
+        if (chips[idx].mode) setChatPersona(chips[idx].mode);
+        sendChatMessage(chips[idx].q);
+      });
     });
   }
 
@@ -5125,29 +5170,72 @@ function appendChatMessage(role, htmlContent, actions = [], metaLabel = '') {
 
 function renderSimpleMarkdown(md) {
   if (!md) return '';
-  let s = md
+  const fmtInline = str => str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  s = s.replace(/^### (.*$)/gm, '<h4>$1</h4>');
-  s = s.replace(/^## (.*$)/gm, '<h4>$1</h4>');
-  s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-  const lines = s.split('\n');
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  const lines = md.split('\n');
   let out = '';
-  let inList = false;
+  let inUl = false;
+  let inOl = false;
+  let tableRows = [];
+
+  const flushLists = () => {
+    if (inUl) { out += '</ul>'; inUl = false; }
+    if (inOl) { out += '</ol>'; inOl = false; }
+  };
+  const flushTable = () => {
+    if (!tableRows.length) return;
+    const dataRows = tableRows.filter(r => !/^[\s|:-]+$/.test(r));
+    if (dataRows.length) {
+      out += '<table class="chat-kv-table">';
+      dataRows.forEach((rowStr, rIdx) => {
+        const cells = rowStr.replace(/^\||\|$/g, '').split('|').map(c => fmtInline(c.trim()));
+        const tag = rIdx === 0 ? 'th' : 'td';
+        out += `<tr>${cells.map(c => `<${tag}>${c}</${tag}>`).join('')}</tr>`;
+      });
+      out += '</table>';
+    }
+    tableRows = [];
+  };
+
   for (const rawLine of lines) {
     const line = rawLine.trim();
-    if (line.startsWith('- ') || line.startsWith('* ')) {
-      if (!inList) { out += '<ul>'; inList = true; }
-      out += `<li>${line.slice(2)}</li>`;
+    if (line.startsWith('|') && line.endsWith('|') && line.length > 2) {
+      flushLists();
+      tableRows.push(line);
+      continue;
+    } else if (tableRows.length) {
+      flushTable();
+    }
+
+    if (/^#{2,4}\s+/.test(line)) {
+      flushLists();
+      out += `<h4>${fmtInline(line.replace(/^#{2,4}\s+/, ''))}</h4>`;
+    } else if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('• ')) {
+      if (inOl) { out += '</ol>'; inOl = false; }
+      if (!inUl) { out += '<ul>'; inUl = true; }
+      out += `<li>${fmtInline(line.slice(2))}</li>`;
+    } else if (/^\d+\.\s+/.test(line)) {
+      if (inUl) { out += '</ul>'; inUl = false; }
+      if (!inOl) { out += '<ol style="padding-left:18px;margin:5px 0">'; inOl = true; }
+      out += `<li>${fmtInline(line.replace(/^\d+\.\s+/, ''))}</li>`;
+    } else if (line.startsWith('> ')) {
+      flushLists();
+      out += `<blockquote style="border-left:3px solid var(--accent);padding-left:9px;margin:6px 0;color:var(--muted)">${fmtInline(line.slice(2))}</blockquote>`;
+    } else if (line.length > 0) {
+      flushLists();
+      out += `<p>${fmtInline(line)}</p>`;
     } else {
-      if (inList) { out += '</ul>'; inList = false; }
-      if (line.startsWith('<h4>')) out += line;
-      else if (line.length > 0) out += `<p>${line}</p>`;
+      flushLists();
     }
   }
-  if (inList) out += '</ul>';
+  flushLists();
+  flushTable();
   return out;
 }
 
@@ -6118,34 +6206,88 @@ async function buildQuantReasoningReply(question) {
   };
 }
 
-async function callGeminiChatWithTelemetry(question) {
-  const key = S.gemKey || document.getElementById('inlineKey')?.value?.trim();
-  if (!key || !S.candles?.length) return null;
-
+function buildLiveDossierForLLM() {
+  if (!S.candles?.length || !S.proposal || !S.quant) return '';
   const sym = S.ticker;
   const last = S.candles[S.candles.length - 1];
   const p = S.proposal;
   const q = S.quant;
   const vp = S.computed.vp;
   const mc = S.mcResult;
-  const bestBt = [...(S.btResults || []).filter(b => !b.isBenchmark)].sort((a, b) => b.sharpe - a.sharpe)[0];
-  const wkTop = (S.weeklyData?.top_picks || []).map(c => `#${c.rank} ${c.symbol} (${c.weekly_alpha_score}/100 ${c.weekly_action}, Setup: ${c.setup_type}, P/E: ${c.pe_ttm ?? 'N/A'})`).join('; ');
+  const { e20, e50, s200, rv, rv2, mv, atrv, kama, kamaER, supertrend, squeeze } = S.computed;
+  const le20 = [...e20].reverse().find(v => v != null) ?? last.close;
+  const le50 = [...e50].reverse().find(v => v != null) ?? last.close;
+  const ls200 = [...s200].reverse().find(v => v != null) ?? le50;
+  const lrsi = [...rv].reverse().find(v => v != null) ?? 50;
+  const lrsi2 = [...(rv2 || [])].reverse().find(v => v != null) ?? 50;
+  const lmcd = [...mv].reverse().find(m => m.sig != null) || {};
+  const latr = [...atrv].reverse().find(v => v != null) ?? last.close * 0.02;
+  const lkama = [...(kama || [])].reverse().find(v => v != null) ?? le20;
+  const lkamaER = [...(kamaER || [])].reverse().find(v => v != null) ?? 0.35;
+  const lst = (supertrend && supertrend[supertrend.length - 1]) || { dir: 1, line: le20 };
+  const lsq = (squeeze && squeeze[squeeze.length - 1]) || { sqOn: false, isNR7: false, mom: 0 };
 
-  const sysContext = `You are the StockSage Quant Pro Copilot, an elite institutional quantitative analyst.
-Answer the user's question concisely, rigorously, and directly using the verified live telemetry below. Use clean markdown (bold key numbers, bullet points, and short paragraphs). Currency symbol is ${ccySym()} (${S.market === 'IN' ? 'NSE India Market vs NIFTY 50' : 'US Market vs SPY'}).
+  const btLines = (S.btResults || []).map(b =>
+    `  - ${b.name}: Signal=${b.liveSignal}, Sharpe=${b.sharpe.toFixed(2)}, Sortino=${b.sortino.toFixed(2)}, NetRet=${fpct(b.totalRet * 100, 1)}, MaxDD=${fpct(b.maxDD * 100, 1)}, WinRate=${b.winRate.toFixed(0)}%${b.delegatedTo ? ` (Active Specialist: ${b.delegatedTo})` : ''}`
+  ).join('\n');
 
-LIVE TELEMETRY FOR ${sym} (${S.meta?.longName || sym}):
-- Spot Price: ${f$(last.close)} | Market Cap: ${S.meta?.marketCapStr || 'N/A'} | Trailing P/E: ${S.meta?.trailingPE ?? 'N/A'} (Industry P/E: ${S.meta?.industryPE ?? 'N/A'}) | EPS: ${S.meta?.eps ?? 'N/A'}
-- Composite Quant Score: ${p.score}/100 | Verdict: ${p.signal} (Conviction: ${p.conviction})
-- Regime & Risk: Hurst H=${q.hurst.toFixed(2)} (${q.regime}), Sharpe=${q.sharpe.toFixed(2)}, Sortino=${q.sortino.toFixed(2)}, Calmar=${q.calmar.toFixed(2)}, MaxDD=${fpct(q.maxDD * 100, 1)}, AnnVol=${(q.annVol * 100).toFixed(1)}%, Beta=${q.beta?.toFixed(2) ?? 'N/A'}, Jensen Alpha=${q.alphaAnn != null ? fpct(q.alphaAnn * 100, 1) : 'N/A'}, Daily VaR(95%)=${fpct(q.var95 * 100, 2)}, CVaR(95%)=${fpct(q.cvar95 * 100, 2)}, Half-Kelly=${(q.halfKelly * 100).toFixed(1)}%
-- Volume Profile: POC=${f$(vp.poc)}, VAL=${f$(vp.val)}, VAH=${f$(vp.vah)}
-- Execution Plan: Ideal Entry=${f$(p.entryLow)}–${f$(p.entryHigh)}, Stop-Loss=${f$(p.stopLoss)}, TP1=${f$(p.tp1)}, TP2=${f$(p.tp2)}, TP3=${f$(p.tp3)}, Horizon=${p.horizon}, Suggested Position=${p.shares} shares (${f$(p.alloc, 0)})
-- Monte Carlo (${mc.nDays}d ${mc.model}): Win Odds=${mc.stats.probUp.toFixed(1)}%, P5=${f$(mc.stats.p5)}, Median=${f$(mc.stats.med)}, P95=${f$(mc.stats.p95)}, Horizon CVaR(5%)=${f$(mc.stats.cvarPrice)} (${fpct(mc.stats.cvarPct, 1)})
-- Top Backtested Strategy (quants.md): ${bestBt?.name} (Signal=${bestBt?.liveSignal}, Sharpe=${bestBt?.sharpe.toFixed(2)}, Net Return=${fpct((bestBt?.totalRet || 0) * 100, 1)}, Win Rate=${bestBt?.winRate.toFixed(0)}%)
-- Current Weekly Top 5 Alpha Picks (${S.market}): ${wkTop || 'N/A'}`;
+  const wkTop = (S.weeklyData?.top_picks || []).map(c =>
+    `#${c.rank} ${c.symbol} (${c.weekly_alpha_score}/100 ${c.weekly_action}, ${c.setup_type}, Entry ${f$(c.weekly_plan.entry_zone[0])}–${f$(c.weekly_plan.entry_zone[1])}, P/E: ${c.pe_ttm ?? 'N/A'})`
+  ).join('; ');
 
+  return [
+    `Active Instrument: ${sym} (${S.meta?.longName || sym}) | Market: ${S.market === 'IN' ? 'NSE India (INR ₹)' : 'US Equities (USD $)'}`,
+    `Spot Price: ${f$(last.close)} | Dual-Pillar Quantamental Score: ${p.score}/100 (Technical Timing Score: ${p.techScore ?? p.score}/100, Street/Fundamental Score: ${p.fundScore ?? 'N/A'}/100) | Action Verdict: ${p.signal} (${p.conviction})`,
+    `Trend & Moving Averages: EMA20=${f$(le20)}, EMA50=${f$(le50)}, SMA200=${f$(ls200)}, Kaufman KAMA=${f$(lkama)} (Efficiency Ratio ${(lkamaER * 100).toFixed(0)}%), ATR SuperTrend=${lst.dir === 1 ? 'BULL' : 'BEAR'} @ ${f$(lst.line)}, Reclaim Trigger=${f$(p.reclaimLevel || le20)}`,
+    `Momentum & Volatility Radar: RSI(14)=${lrsi.toFixed(1)}, Connors RSI(2)=${lrsi2.toFixed(1)}, MACD Hist=${(lmcd.hist || 0).toFixed(3)}, TTM Squeeze=${lsq.sqOn ? 'COILED ON' : 'OFF'} (NR7=${lsq.isNR7 ? 'YES' : 'NO'}, Mom=${(lsq.mom || 0).toFixed(2)}), Wilder ATR(14)=${f$(latr)}`,
+    `Volume Profile (20-Bin): POC=${f$(vp.poc)}, Value Area Low (VAL)=${f$(vp.val)}, Value Area High (VAH)=${f$(vp.vah)}`,
+    `Risk & Regime Metrics: Hurst H=${q.hurst.toFixed(2)} (${q.regime}), Annualized Sharpe=${q.sharpe.toFixed(2)}, Sortino=${q.sortino.toFixed(2)}, Calmar=${q.calmar.toFixed(2)}, Max Drawdown=${fpct(q.maxDD * 100, 1)}, AnnVol=${(q.annVol * 100).toFixed(1)}%, Beta=${q.beta?.toFixed(2) ?? 'N/A'}, Jensen's Alpha=${q.alphaAnn != null ? fpct(q.alphaAnn * 100, 1) : 'N/A'}, Daily VaR(95%)=${fpct(q.var95 * 100, 2)}, CVaR(95%)=${fpct(q.cvar95 * 100, 2)}, Half-Kelly=${(q.halfKelly * 100).toFixed(1)}%`,
+    `Execution Plan: Ideal Entry=${f$(p.entryLow)}–${f$(p.entryHigh)}, Chandelier Stop-Loss=${f$(p.stopLoss)}, TP1(1.5R)=${f$(p.tp1)}, TP2(2.5R)=${f$(p.tp2)}, TP3(4.0R)=${f$(p.tp3)}, Holding Horizon=${p.horizon}, Suggested Sizing=${p.shares} shares (${f$(p.alloc, 0)})`,
+    `Monte Carlo Simulation (${mc.nDays}d ${mc.model.toUpperCase()}): Win Probability=${mc.stats.probUp.toFixed(1)}%, Bear Tail P5=${f$(mc.stats.p5)}, P25=${f$(mc.stats.p25)}, Median P50=${f$(mc.stats.med)}, P75=${f$(mc.stats.p75)}, Bull Tail P95=${f$(mc.stats.p95)}, 5% Expected Shortfall (CVaR)=${f$(mc.stats.cvarPrice)} (${fpct(mc.stats.cvarPct, 1)})`,
+    `Systematic Strategy Backtester (7 Specialists + Walk-Forward Meta-Boss):\n${btLines}`,
+    `Current Weekly Top 5 Alpha Picks (${S.market}): ${wkTop || 'N/A'}`,
+  ].join('\n');
+}
+
+async function callGeminiChatWithTelemetry(question) {
+  if (!S.candles?.length) return null;
+  const key = S.gemKey || document.getElementById('inlineKey')?.value?.trim() || '';
+  const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
+  const telemetry = buildLiveDossierForLLM();
+
+  // 1. Primary: Call Server-Side /api/chat (Supports Zero-Key Cloud Run Vertex AI Gemini 2.5 Flash + Live Server Fundamentals Enrichment)
+  try {
+    const r = await fetch(`${apiBase}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        symbol: S.ticker,
+        market: S.market,
+        mode: S.chatPersona || 'analyst',
+        telemetry,
+        history: S.chatHistory.slice(-8),
+        api_key: key,
+        model: S.gemModel || 'gemini-2.5-flash',
+      }),
+      signal: AbortSignal.timeout(22000),
+    });
+    if (r.ok) {
+      const d = await r.json();
+      if (d && d.ok && d.markdown) {
+        return {
+          html: renderSimpleMarkdown(d.markdown),
+          followUps: d.follow_ups || [],
+          modelLabel: `✨ ${d.model || 'gemini-2.5-flash'} (${d.provider || 'AI'})`,
+        };
+      }
+    }
+  } catch {}
+
+  // 2. Fallback: Direct Browser Call if User Provided an API Key in Settings
+  if (!key) return null;
   const historyText = S.chatHistory.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
-  const fullPrompt = `${sysContext}\n\nRECENT CONVERSATION:\n${historyText}\n\nUSER QUESTION: ${question}`;
+  const fullPrompt = `You are the StockSage Quant Pro Copilot (${S.chatPersona || 'analyst'} mode). Answer using the live telemetry below and end with FOLLOW_UPS: Q1? | Q2? | Q3?\n\n${telemetry}\n\nRECENT CONVERSATION:\n${historyText}\n\nUSER QUESTION: ${question}`;
 
   const modelsToTry = [S.gemModel || 'gemini-2.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
   for (const m of [...new Set(modelsToTry)]) {
@@ -6157,14 +6299,29 @@ LIVE TELEMETRY FOR ${sym} (${S.meta?.longName || sym}):
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: fullPrompt }] }],
-            generationConfig: { temperature: 0.2 },
+            generationConfig: { temperature: 0.25 },
           }),
         }
       );
       if (!resp.ok) continue;
       const d = await resp.json();
       const raw = d.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (raw && raw.trim()) return renderSimpleMarkdown(raw.trim());
+      if (raw && raw.trim()) {
+        let followUps = [];
+        const cleanLines = [];
+        for (const ln of raw.trim().split('\n')) {
+          if (ln.trim().toUpperCase().startsWith('FOLLOW_UPS:')) {
+            followUps = ln.split(':').slice(1).join(':').split('|').map(x => x.trim()).filter(Boolean).slice(0, 3);
+          } else {
+            cleanLines.push(ln);
+          }
+        }
+        return {
+          html: renderSimpleMarkdown(cleanLines.join('\n').trim()),
+          followUps,
+          modelLabel: `✨ ${m}`,
+        };
+      }
     } catch {}
   }
   return null;
@@ -6180,37 +6337,50 @@ async function sendChatMessage(customPrompt) {
     toggleChatDrawer(true);
   }
 
-  appendChatMessage('user', `<p>${question.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`);
+  const personaNames = { analyst: '⚡ Flash Analyst', eli5: '👶 ELI5', debate: '⚔️ Bull vs. Bear', devil: '🦈 Devil\'s Advocate' };
+  const pBadge = personaNames[S.chatPersona] || '⚡ Flash Analyst';
+  appendChatMessage('user', `<p>${question.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`, [], `You · ${pBadge}`);
   S.chatHistory.push({ role: 'user', text: question });
 
-  const thinkingNode = appendChatMessage('bot', `<p style="color:var(--muted)">⏳ <em>Reasoning over live ${S.ticker} telemetry, Monte Carlo paths &amp; factor tables…</em></p>`, [], 'Quant Copilot · Analyzing…');
+  const thinkingNode = appendChatMessage('bot', `<p style="color:var(--muted)">⏳ <em>Gemini 2.5 Flash (${pBadge}) is reasoning over live ${S.ticker} price action, 7-strategy backtests, Wall Street fundamentals &amp; news…</em></p>`, [], 'Quant Copilot · Reasoning…');
 
   try {
-    let replyObj = null;
-    const isAgenticOrSpecial = /\b(compare|vs\.?|versus|head-to-head|run|simulate|plot|draw|multi-?timeframe|1h|stress\s*test|shock|drops?|falls?|crash|news|headlines?|screen|screener|which stocks|find stocks|portfolio|basket|allocate|build)\b/i.test(question);
-    if (S.gemKey && !isAgenticOrSpecial) {
-      const gemHtml = await callGeminiChatWithTelemetry(question);
-      if (gemHtml) {
-        const det = await buildQuantReasoningReply(question);
-        replyObj = {
-          html: gemHtml,
-          actions: det.actions || [],
-          meta: `Quant Copilot · ✨ Gemini AI + Live Telemetry`
-        };
+    const isInteractiveTool = /\b(compare|vs\.?|versus|head-to-head|run\s+\d+|simulate|re-simulate|plot|draw|multi-?timeframe|1h|stress\s*test|shock|drops?\s+-?\d+|falls?\s+-?\d+|screen|screener|build.*portfolio|build.*basket)\b/i.test(question);
+
+    // Run Gemini 2.5 Flash reasoning AND deterministic quantitative tool/tables in parallel
+    const [aiRes, det] = await Promise.all([
+      callGeminiChatWithTelemetry(question),
+      buildQuantReasoningReply(question),
+    ]);
+
+    let finalHtml = '';
+    let finalMeta = '';
+    let finalActions = [];
+
+    if (aiRes && aiRes.html) {
+      if (isInteractiveTool && det?.html) {
+        finalHtml = `
+          <div style="margin-bottom:10px">${aiRes.html}</div>
+          <details open style="border-top:1px solid var(--border);padding-top:8px;margin-top:8px">
+            <summary style="font-size:11px;font-weight:700;color:var(--accent);cursor:pointer;margin-bottom:6px">📊 Interactive Quantitative Telemetry &amp; Tool Output</summary>
+            ${det.html}
+          </details>
+        `;
+      } else {
+        finalHtml = aiRes.html;
       }
-    }
-    if (!replyObj) {
-      const det = await buildQuantReasoningReply(question);
-      replyObj = {
-        html: det.html,
-        actions: det.actions || [],
-        meta: `Quant Copilot · ⚡ Multi-Factor Reasoning Engine`
-      };
+      finalMeta = `Quant Copilot · ${aiRes.modelLabel} · ${pBadge}`;
+      const followUpActions = (aiRes.followUps || []).map(fq => ({ label: `💬 ${fq}`, prompt: fq }));
+      finalActions = [...followUpActions, ...(det?.actions || []).slice(0, 2)];
+    } else {
+      finalHtml = det.html;
+      finalActions = det.actions || [];
+      finalMeta = `Quant Copilot · ⚡ Multi-Factor Reasoning Engine`;
     }
 
     if (thinkingNode) thinkingNode.remove();
-    appendChatMessage('bot', replyObj.html, replyObj.actions, replyObj.meta);
-    S.chatHistory.push({ role: 'assistant', text: replyObj.html.replace(/<[^>]+>/g, ' ').slice(0, 600) });
+    appendChatMessage('bot', finalHtml, finalActions, finalMeta);
+    S.chatHistory.push({ role: 'assistant', text: finalHtml.replace(/<[^>]+>/g, ' ').slice(0, 700) });
   } catch (err) {
     if (thinkingNode) thinkingNode.remove();
     appendChatMessage('bot', `<p style="color:var(--red)">❌ Reasoning error: ${err.message}</p>`);
@@ -6343,6 +6513,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('aiRunBtn').addEventListener('click', runAI);
 
   // Quant Copilot Chatbot controls
+  document.querySelectorAll('#chatPersonaBar .persona-btn').forEach(btn => {
+    btn.addEventListener('click', () => setChatPersona(btn.dataset.mode));
+  });
   document.getElementById('chatToggleBtn').addEventListener('click', () => toggleChatDrawer());
   document.getElementById('chatFab').addEventListener('click', () => toggleChatDrawer(true));
   document.getElementById('chatCloseBtn').addEventListener('click', () => toggleChatDrawer(false));
