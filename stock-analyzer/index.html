@@ -1015,10 +1015,10 @@
       <div class="hint">Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
     </div>
     <div class="field">
-      <label>Gemini Model</label>
+      <label>Gemini Model (Planner + Deep Reasoner)</label>
       <select id="modalModel">
-        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast, Recommended)</option>
-        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Reasoning)</option>
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Reasoning Planner + RAG — Highest Quality)</option>
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast Quantamental Reasoning)</option>
         <option value="gemini-2.0-flash">Gemini 2.0 Flash (Legacy Fallback)</option>
       </select>
     </div>
@@ -1502,12 +1502,12 @@
         <span>🟢</span>
         <span id="chatCtxTicker">Loading telemetry…</span>
       </div>
-      <span class="chat-mode-pill gemini" id="chatModePill" title="Click to configure Gemini model or optional API key">✨ Gemini 2.5 Flash</span>
+      <span class="chat-mode-pill gemini" id="chatModePill" title="Click to configure Gemini Planner/Reasoner model or optional API key">🧠 Planner · Gemini 2.5 Pro</span>
     </div>
 
     <div class="chat-chips" id="chatPersonaBar" style="border-bottom:1px solid var(--border);background:rgba(15,23,42,.55);padding:5px 10px;gap:5px">
       <span style="font-size:9.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;align-self:center;margin-right:2px">Mode:</span>
-      <button class="chat-chip persona-btn active" data-mode="analyst" style="border-color:var(--accent);color:var(--accent);background:rgba(56,189,248,.14)" title="Balanced Institutional Quant + Fundamental Synthesis">⚡ Flash Analyst</button>
+      <button class="chat-chip persona-btn active" data-mode="analyst" style="border-color:var(--accent);color:var(--accent);background:rgba(56,189,248,.14)" title="Deliberative Planner + 17-Module RAG + Quant Synthesis">🧠 Deep Planner</button>
       <button class="chat-chip persona-btn" data-mode="eli5" title="Explain Like I'm 5 using simple everyday analogies">👶 ELI5</button>
       <button class="chat-chip persona-btn" data-mode="debate" title="Argue 3 Bull Points vs. 3 Bear Points + Judge Verdict">⚔️ Bull vs. Bear</button>
       <button class="chat-chip persona-btn" data-mode="devil" title="Ruthlessly stress-test your thesis and expose hidden risks">🦈 Devil's Advocate</button>
@@ -1566,7 +1566,7 @@ const S = {
   quant: {},
   proposal: null,
   gemKey: localStorage.getItem('ss_key') || '',
-  gemModel: localStorage.getItem('ss_model') || 'gemini-2.5-flash',
+  gemModel: localStorage.getItem('ss_model') || 'gemini-2.5-pro',
   rfRate: parseFloat(localStorage.getItem('ss_rf')) || 4.25,
   ind: { ema20: true, ema50: true, sma200: true, vwap: true, bb: true, sr: true, vol: true },
   charts: {},
@@ -5039,7 +5039,7 @@ function updateChatContextUI(onNewTicker = false) {
 
   const modeEl = document.getElementById('chatModePill');
   if (modeEl) {
-    modeEl.textContent = S.gemKey ? `✨ ${S.gemModel || 'Gemini 2.5 Flash'}` : '✨ Gemini 2.5 Flash';
+    modeEl.textContent = S.gemKey ? `🧠 ${S.gemModel || 'gemini-2.5-pro'}` : `🧠 Planner · ${S.gemModel || 'gemini-2.5-pro'}`;
     modeEl.classList.add('gemini');
   }
 
@@ -5047,14 +5047,14 @@ function updateChatContextUI(onNewTicker = false) {
   const sig = p?.signal || 'BUY/HOLD';
   const bLbl = benchName();
   const chips = [
-    { lbl: `🎯 Why ${sig}?`, q: `Why is ${sym} rated ${sig} (${p?.score || '—'}/100)? Explain the Technical Score vs. Wall Street Fundamental Score and what triggers the next move.` },
-    { lbl: `⚔️ Bull vs. Bear Debate`, q: `Run a head-to-head Bull vs. Bear debate on ${sym} using its technicals, Wall Street price targets, earnings, and cash flow.`, mode: 'debate' },
+    { lbl: `🎯 Plot Targets & Why ${sig}?`, q: `Plot ${sym}'s Wall Street price targets on the chart and explain why ${sym} is rated ${sig} (${p?.score || '—'}/100) across Technicals vs. Street Fundamentals.` },
+    { lbl: `📑 Drive Financials & FCF`, q: `Open ${sym}'s quarterly financials tab and audit its 5-quarter revenue, operating margins, CapEx, and free cash flow conversion.` },
+    { lbl: `⚔️ Bull vs. Bear Debate`, q: `Run a head-to-head Bull vs. Bear debate on ${sym} using its technicals, Wall Street price targets, earnings revisions, and cash flow.`, mode: 'debate' },
+    { lbl: `🦈 Devil's Advocate Pre-Mortem`, q: `Play Devil's Advocate on ${sym}: what are the biggest hidden risks or traps in its chart, Volume Profile POC, CapEx/Free Cash Flow, or 13F/insider holdings right now?`, mode: 'devil' },
     { lbl: `👶 Explain Setup ELI5`, q: `Explain ${sym}'s current chart setup, Monte Carlo simulation, and fundamental valuation like I'm 5 using simple analogies.`, mode: 'eli5' },
-    { lbl: `🦈 Devil's Advocate Audit`, q: `Play Devil's Advocate on ${sym}: what are the biggest hidden risks or traps in its chart, Volume Profile POC, CapEx/Free Cash Flow, or valuation right now?`, mode: 'devil' },
-    { lbl: `🏛️ Earnings & Cash Flow`, q: `Audit ${sym}'s quarterly earnings beat/miss history, revenue & free cash flow vs CapEx, Wall Street analyst price targets, and institutional holdings.` },
-    { lbl: `⚡ Stress Test (${bLbl} -5%)`, q: `Stress test ${sym} if ${bLbl} drops -5% in a market shock. What happens to my position and stop-loss?` },
-    { lbl: `📰 Live News & Catalysts`, q: `Fetch the latest live news headlines and sentiment for ${sym} and reason on how they impact the investment thesis.` },
-    { lbl: `⚔️ ${sym} vs ${peer}`, q: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Fundamentals (P/E, FCF, Analyst Upside), and Monte Carlo win odds.` },
+    { lbl: `🏦 Audit 13F & Insiders`, q: `Open ${sym}'s Holdings tab and audit its top 13F institutional holders, recent Form 4 insider transactions, and short float.` },
+    { lbl: `🎲 Run 1500-Path 90D Jump MC`, q: `Run 1500 Monte Carlo paths over 90 days using jump-diffusion for ${sym} and reason on the P5 Bear Tail and CVaR.` },
+    { lbl: `⚔️ ${sym} vs ${peer} (Drive & Compare)`, q: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Fundamentals (P/E, FCF, Analyst Upside), and Monte Carlo win odds.` },
   ];
   const chipsEl = document.getElementById('chatChips');
   if (chipsEl) {
@@ -6249,13 +6249,163 @@ function buildLiveDossierForLLM() {
   ].join('\n');
 }
 
+async function executePageDriverCommands(uiCommands) {
+  if (!Array.isArray(uiCommands) || !uiCommands.length) return [];
+  const executed = [];
+
+  for (const c of uiCommands) {
+    if (!c || !c.cmd) continue;
+    try {
+      switch (c.cmd) {
+        case 'SWITCH_MARKET': {
+          const targetMkt = (c.market || 'US').toUpperCase();
+          if (targetMkt !== S.market) {
+            switchMarket(targetMkt);
+            executed.push(`🌐 Switched market desk to ${targetMkt === 'IN' ? '🇮🇳 India (NSE)' : '🇺🇸 US Market'}`);
+          }
+          break;
+        }
+        case 'LOAD_TICKER': {
+          const targetSym = (c.symbol || '').toUpperCase().trim();
+          if (targetSym && targetSym !== S.ticker) {
+            const inp = document.getElementById('tickerInput');
+            if (inp) inp.value = targetSym;
+            await analyze();
+            executed.push(`📈 Loaded ${targetSym} across Chart, Monte Carlo, Backtester & Intelligence Hub`);
+          }
+          break;
+        }
+        case 'SET_RANGE': {
+          const rng = c.range || '1y';
+          const btn = document.querySelector(`.rng[data-r="${rng}"]`);
+          if (btn && !btn.classList.contains('active')) {
+            document.querySelectorAll('.rng').forEach(x => x.classList.remove('active'));
+            btn.classList.add('active');
+            await analyze();
+            executed.push(`🕒 Switched chart timeframe to ${rng.toUpperCase()}`);
+          }
+          break;
+        }
+        case 'OPEN_INTEL_TAB': {
+          const tab = c.tab || 'overview';
+          jumpToIntelTab(tab);
+          executed.push(`🏛️ Opened Intelligence Hub → '${tab.toUpperCase()}' tab`);
+          break;
+        }
+        case 'SET_FIN_FREQ': {
+          const freq = c.freq === 'annual' ? 'annual' : 'quarterly';
+          switchFinFreq(freq);
+          executed.push(`📑 Switched Financials table to ${freq.toUpperCase()} view`);
+          break;
+        }
+        case 'FILTER_NEWS': {
+          filterNewsCategory(c.category || 'ALL');
+          executed.push(`📰 Filtered News Wire to '${c.category || 'ALL'}'`);
+          break;
+        }
+        case 'RUN_MONTE_CARLO': {
+          if (S.candles?.length) {
+            const nP = clamp(parseInt(c.paths) || 1500, 100, 3000);
+            const nD = clamp(parseInt(c.days) || 63, 5, 252);
+            const mod = c.model || 'jump';
+            const vol = c.vol_mode || 'ewma';
+            document.getElementById('mcPaths').value = String(nP);
+            document.getElementById('mcDays').value = String(nD);
+            document.getElementById('mcModel').value = mod;
+            document.getElementById('mcVolMode').value = vol;
+            const closes = S.candles.map(x => x.close);
+            S.mcResult = runMC(closes, nP, nD, mod, vol);
+            drawMC(document.getElementById('mcCanvas'), S.mcResult, S.candles);
+            updateMCStats(S.mcResult);
+            S.proposal = buildTradeProposal();
+            if (S.intel) enrichProposalWithIntelligence(S.intel);
+            else renderProposal(S.proposal);
+            executed.push(`🎲 Re-Simulated Monte Carlo (${nP} paths · ${nD}d · ${mod.toUpperCase()})`);
+          }
+          break;
+        }
+        case 'PLOT_CHART_LINES': {
+          if (Array.isArray(c.lines) && c.lines.length) {
+            plotCustomChartLines(c.lines);
+            executed.push(`📏 Plotted ${c.lines.length} level(s) on Candlestick Chart (${c.lines.map(l => l.title).join(', ')})`);
+          }
+          break;
+        }
+        case 'SET_CAPITAL': {
+          const cap = parseFloat(c.capital);
+          if (cap && cap >= 500) {
+            document.getElementById('acctSize').value = String(Math.round(cap));
+            if (S.candles?.length) {
+              S.proposal = buildTradeProposal();
+              if (S.intel) enrichProposalWithIntelligence(S.intel);
+              else renderProposal(S.proposal);
+            }
+            executed.push(`💼 Updated Portfolio Capital to ${f$(cap, 0)} & resized position`);
+          }
+          break;
+        }
+        case 'RUN_WEEKLY_SCAN': {
+          if (c.preset && document.getElementById('wkPreset')) {
+            document.getElementById('wkPreset').value = c.preset;
+            if (WEEKLY_PRESETS[c.preset]) {
+              document.getElementById('wkCustomSyms').value = WEEKLY_PRESETS[c.preset];
+            }
+          }
+          runWeeklyScanner();
+          executed.push(`📅 Triggered Weekly Alpha Scanner (${c.preset || 'leaders'})`);
+          break;
+        }
+        case 'SCROLL_TO_PANEL': {
+          const pEl = document.getElementById(c.panel);
+          if (pEl) {
+            pEl.classList.remove('collapsed');
+            pEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            executed.push(`🔍 Focused panel '${c.panel}'`);
+          }
+          break;
+        }
+      }
+    } catch {}
+  }
+  return executed;
+}
+
+function renderPlannerTraceHtml(plan, ragTrace, executedSteps) {
+  if (!plan) return '';
+  const hyps = (plan.hypotheses || []).map(h => `<li style="margin-bottom:3px">${h}</li>`).join('');
+  const skills = (plan.skills_invoked || []).map(s => `<span class="badge b-purple" style="font-size:9.5px">${s}</span>`).join(' ');
+  const ragItems = (ragTrace || []).map(r => `<li style="margin-bottom:2px"><strong>${r.symbol} · ${r.corpus}:</strong> <span style="color:var(--muted)">${r.summary}</span></li>`).join('');
+  const uiBanner = (executedSteps && executedSteps.length)
+    ? `<div style="background:rgba(56,189,248,.11);border:1px solid rgba(56,189,248,.32);border-radius:6px;padding:6px 9px;margin-bottom:8px;font-size:11px">
+         <div style="font-weight:800;color:var(--accent);margin-bottom:3px">🧭 Page-Driver UI Actions Executed Automatically:</div>
+         <div style="display:flex;flex-wrap:wrap;gap:5px">${executedSteps.map(s => `<span class="badge b-blue" style="font-size:10px">${s}</span>`).join('')}</div>
+       </div>`
+    : '';
+
+  return `
+    ${uiBanner}
+    <details style="background:rgba(15,23,42,.65);border:1px solid var(--border);border-radius:6px;padding:6px 9px;margin-bottom:9px;font-size:11px">
+      <summary style="cursor:pointer;font-weight:800;color:#d8b4fe;display:flex;align-items:center;justify-content:space-between">
+        <span>🧠 Deliberative Planner, Hypotheses &amp; 17-Module RAG Trace</span>
+        <span style="font-size:10px;color:var(--muted)">${(plan.skills_invoked || []).length} Skills · ${(ragTrace || []).length} RAG/Tool Chunks</span>
+      </summary>
+      <div style="margin-top:7px;padding-top:6px;border-top:1px dashed var(--border);line-height:1.45">
+        <div style="margin-bottom:5px"><strong>Planner Strategy:</strong> <span style="color:var(--muted)">${plan.thought_summary || ''}</span></div>
+        <div style="margin-bottom:5px"><strong>Attached Skills Invoked:</strong> ${skills}</div>
+        <div style="margin-bottom:5px"><strong>Falsifiable Hypotheses Tested:</strong><ul style="margin:3px 0 5px 16px">${hyps}</ul></div>
+        ${ragItems ? `<div><strong>Retrieved Server RAG &amp; Quant Tool Evidence:</strong><ul style="margin:3px 0 2px 16px">${ragItems}</ul></div>` : ''}
+      </div>
+    </details>
+  `;
+}
+
 async function callGeminiChatWithTelemetry(question) {
   if (!S.candles?.length) return null;
   const key = S.gemKey || document.getElementById('inlineKey')?.value?.trim() || '';
   const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
   const telemetry = buildLiveDossierForLLM();
 
-  // 1. Primary: Call Server-Side /api/chat (Supports Zero-Key Cloud Run Vertex AI Gemini 2.5 Flash + Live Server Fundamentals Enrichment)
+  // 1. Primary: Call Server-Side 3-Stage Deliberative Planner -> Parallel RAG & Tool Executor -> Deep Reasoner (/api/chat)
   try {
     const r = await fetch(`${apiBase}/api/chat`, {
       method: 'POST',
@@ -6268,17 +6418,20 @@ async function callGeminiChatWithTelemetry(question) {
         telemetry,
         history: S.chatHistory.slice(-8),
         api_key: key,
-        model: S.gemModel || 'gemini-2.5-flash',
+        model: S.gemModel || 'gemini-2.5-pro',
       }),
-      signal: AbortSignal.timeout(22000),
+      signal: AbortSignal.timeout(45000),
     });
     if (r.ok) {
       const d = await r.json();
+      const executedSteps = await executePageDriverCommands(d?.ui_commands || []);
       if (d && d.ok && d.markdown) {
+        const traceHtml = renderPlannerTraceHtml(d.plan, d.rag_trace, executedSteps);
         return {
-          html: renderSimpleMarkdown(d.markdown),
+          html: traceHtml + renderSimpleMarkdown(d.markdown),
           followUps: d.follow_ups || [],
-          modelLabel: `✨ ${d.model || 'gemini-2.5-flash'} (${d.provider || 'AI'})`,
+          modelLabel: `🧠 ${d.model || 'gemini-2.5-pro'} (${d.provider || 'Planner+RAG'})`,
+          executedSteps,
         };
       }
     }
@@ -6287,9 +6440,9 @@ async function callGeminiChatWithTelemetry(question) {
   // 2. Fallback: Direct Browser Call if User Provided an API Key in Settings
   if (!key) return null;
   const historyText = S.chatHistory.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
-  const fullPrompt = `You are the StockSage Quant Pro Copilot (${S.chatPersona || 'analyst'} mode). Answer using the live telemetry below and end with FOLLOW_UPS: Q1? | Q2? | Q3?\n\n${telemetry}\n\nRECENT CONVERSATION:\n${historyText}\n\nUSER QUESTION: ${question}`;
+  const fullPrompt = `You are the StockSage Quant Pro Deliberative Planner & Reasoner (${S.chatPersona || 'analyst'} mode). Answer using the live telemetry below and end with FOLLOW_UPS: Q1? | Q2? | Q3?\n\n${telemetry}\n\nRECENT CONVERSATION:\n${historyText}\n\nUSER QUESTION: ${question}`;
 
-  const modelsToTry = [S.gemModel || 'gemini-2.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  const modelsToTry = [S.gemModel || 'gemini-2.5-pro', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'];
   for (const m of [...new Set(modelsToTry)]) {
     try {
       const resp = await fetch(
@@ -6299,7 +6452,7 @@ async function callGeminiChatWithTelemetry(question) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: fullPrompt }] }],
-            generationConfig: { temperature: 0.25 },
+            generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
           }),
         }
       );
@@ -6319,7 +6472,7 @@ async function callGeminiChatWithTelemetry(question) {
         return {
           html: renderSimpleMarkdown(cleanLines.join('\n').trim()),
           followUps,
-          modelLabel: `✨ ${m}`,
+          modelLabel: `🧠 ${m}`,
         };
       }
     } catch {}
@@ -6337,17 +6490,22 @@ async function sendChatMessage(customPrompt) {
     toggleChatDrawer(true);
   }
 
-  const personaNames = { analyst: '⚡ Flash Analyst', eli5: '👶 ELI5', debate: '⚔️ Bull vs. Bear', devil: '🦈 Devil\'s Advocate' };
-  const pBadge = personaNames[S.chatPersona] || '⚡ Flash Analyst';
+  const personaNames = { analyst: '🧠 Deep Planner', eli5: '👶 ELI5', debate: '⚔️ Bull vs. Bear', devil: '🦈 Devil\'s Advocate' };
+  const pBadge = personaNames[S.chatPersona] || '🧠 Deep Planner';
   appendChatMessage('user', `<p>${question.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`, [], `You · ${pBadge}`);
   S.chatHistory.push({ role: 'user', text: question });
 
-  const thinkingNode = appendChatMessage('bot', `<p style="color:var(--muted)">⏳ <em>Gemini 2.5 Flash (${pBadge}) is reasoning over live ${S.ticker} price action, 7-strategy backtests, Wall Street fundamentals &amp; news…</em></p>`, [], 'Quant Copilot · Reasoning…');
+  const thinkingNode = appendChatMessage(
+    'bot',
+    `<p style="color:var(--muted)">⏳ <em>Stage 1 Planner → Stage 2 Parallel 17-Module RAG &amp; Quant Tool Retrieval → Stage 3 Deep Reasoner (${pBadge}) is analyzing ${S.ticker} &amp; driving your page…</em></p>`,
+    [],
+    'Quant Copilot · Deliberative Planner Running…'
+  );
 
   try {
     const isInteractiveTool = /\b(compare|vs\.?|versus|head-to-head|run\s+\d+|simulate|re-simulate|plot|draw|multi-?timeframe|1h|stress\s*test|shock|drops?\s+-?\d+|falls?\s+-?\d+|screen|screener|build.*portfolio|build.*basket)\b/i.test(question);
 
-    // Run Gemini 2.5 Flash reasoning AND deterministic quantitative tool/tables in parallel
+    // Run 3-Stage Deliberative Planner + RAG + Deep Reasoner AND deterministic quantitative tool tables in parallel
     const [aiRes, det] = await Promise.all([
       callGeminiChatWithTelemetry(question),
       buildQuantReasoningReply(question),

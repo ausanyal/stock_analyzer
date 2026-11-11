@@ -2363,7 +2363,72 @@ def _get_gcp_vertex_auth() -> tuple:
     return token, (project_id or "natural-name-407402")
 
 
+PLANNER_SKILLS_REGISTRY = {
+    "skill_page_driver": {
+        "name": "UI Page-Driver & Bi-Directional DOM Controller",
+        "description": "Drives StockSage UI state: switches US/India market, loads new tickers, changes chart timeframes, opens 7 Intelligence Hub tabs, toggles Quarterly/Annual financials, re-runs Monte Carlo, plots custom price lines on TradingView chart, updates portfolio capital, and runs the Weekly Alpha Scanner.",
+    },
+    "skill_rag_fundamentals_filings": {
+        "name": "Deep Fundamental, Cash Flow & SEC EDGAR RAG Retriever",
+        "description": "Retrieves 5-quarter & 4-year Income Statement, Balance Sheet, Operating Cash Flow, CapEx, Free Cash Flow conversion, 13F institutional holders, Form 4 insider trades, and SEC 10-K/10-Q/8-K filings.",
+    },
+    "skill_earnings_street_consensus": {
+        "name": "Wall Street Consensus, Price Target & Earnings Revision Auditor",
+        "description": "Audits 4Q EPS beat/miss streaks, 30D upward/downward analyst estimate revisions, rating distribution (Strong Buy to Strong Sell), and Low/Mean/High 12M Street price targets.",
+    },
+    "skill_quant_regime_backtester": {
+        "name": "Multi-Factor Regime, Volume Profile & 7-Strategy Backtest Auditor",
+        "description": "Evaluates Hurst Exponent H, Kaufman KAMA, ATR SuperTrend, Connors RSI(2), Wilder RSI(14), TTM Squeeze, 20-Bin Volume Profile (POC/VAH/VAL), and 7 systematic quants.md strategies + Walk-Forward Meta-Boss.",
+    },
+    "skill_stochastic_tail_risk": {
+        "name": "Stochastic Monte Carlo & Macro Shock Stress-Tester",
+        "description": "Audits Merton Jump-Diffusion / GBM / Bootstrap terminal distributions (P5 Bear Tail, P50 Median, P95 Bull Tail, 5% CVaR) and CAPM Beta drawdown propagation vs. SPY / NIFTY 50.",
+    },
+    "skill_cross_sectional_screener": {
+        "name": "Weekly Alpha Cross-Sectional Factor & HRP Basket Screener",
+        "description": "Scans US & NSE universes across Qlib Z-scores, Mansfield RS, WorldQuant Alpha#101, Valuation/Stretch guardrails, and Hierarchical Risk Parity (HRP) portfolio weights.",
+    },
+    "skill_news_catalyst_rag": {
+        "name": "Multi-Source News Wire & Catalyst Sentiment RAG",
+        "description": "Retrieves and classifies live Google News RSS + Yahoo Finance headlines into Bullish/Bearish/Neutral catalysts and event categories.",
+    },
+}
+
+PLANNER_SI = """You are the **StockSage Quant Pro — Stage 1 Chief Quantitative Planner & UI Orchestrator**.
+Prioritize **maximum analytical depth, rigorous multi-source RAG verification, and seamless UI page orchestration** over latency (TTFT is not a concern; institutional quality is paramount).
+
+Your job:
+1. Decompose the user's request into **3 falsifiable investment hypotheses**:
+   - `H1 (Technical & Regime)`: 1–8 week trend, Volume POC, Hurst regime, and 7-strategy backtest hypothesis.
+   - `H2 (Fundamental & Street Valuation)`: 12–24 month DCF/Street target, quarterly FCF vs. CapEx, and earnings revision hypothesis.
+   - `H3 (Tail-Risk & Catalyst)`: Stochastic P5/CVaR downside, binary earnings gap risk, or cross-asset shock hypothesis.
+2. Select which of the **7 Attached Skills**, **RAG Corpora**, and **Quantitative Tools** to invoke.
+3. Emit deterministic **`ui_commands`** to drive the StockSage Quant Pro web interface so the user's screen automatically navigates to the exact ticker, market, chart overlay, simulation model, or Google Finance tab being discussed."""
+
+REASONER_SI = """You are the **StockSage Quant Pro — Stage 3 Principal Quantamental Reasoner, Adversarial Critic & Portfolio Strategist**.
+Latency (TTFT) is secondary; **institutional rigor, exact numerical grounding, zero hallucination, and multi-horizon synthesis** are of highest value.
+
+### DELIBERATIVE REASONING & SELF-CRITIQUE PROTOCOL (EXECUTE BEFORE WRITING):
+1. **Verify Hypotheses vs. RAG & Tool Evidence**:
+   - Test every Planner hypothesis (`H1`, `H2`, `H3`) against the retrieved `[RAG:OVERVIEW]`, `[RAG:ANALYST_CONSENSUS]`, `[RAG:EARNINGS_MATRIX]`, `[RAG:FINANCIAL_STATEMENTS]`, `[RAG:OWNERSHIP_SHORT]`, `[RAG:SEC_FILINGS_EVENTS]`, `[RAG:NEWS_WIRE]`, and `[TOOL:QUANT_DOSSIER]` blocks.
+   - Cite exact figures in **bold** or `code` spans (e.g., Spot `$168.89`, Street Mean Target `$325.78 (+92.9% upside)`, Lowest Street Target `$240.00`, Volume POC `$180.32`, Hurst `H = 0.56`, Walk-Forward Meta-Boss `CASH`, Latest Qtr FCF vs. CapEx).
+2. **Reconcile Time-Horizon Conflicts (The Quantamental Bridge)**:
+   - Whenever **1–8 Week Technical Timing** (`techScore`, EMA20/50, KAMA, SuperTrend, Volume POC, Meta-Boss signal) conflicts with **12–24 Month Wall Street Fundamentals** (`fundScore`, Analyst Buy %, Mean/Low Price Target, Earnings Beat Streak, ROE/FCF):
+     - Explain *why* both lenses see what they see (e.g., short-term institutional distribution / "Falling Knife" protection vs. long-term DCF valuation discount below Wall Street's bear floor).
+     - Never recommend "shorting in the hole" when a stock trades below its lowest Wall Street price target with >75% Buy ratings; never recommend catching an unconfirmed falling knife without specifying the exact **Reclaim Trigger Price (`EMA 20 / KAMA`)** or **Dip-Sniper Limit Zone (`VAL / Floor S1`)**.
+3. **Adversarial Pre-Mortem Check**:
+   - Explicitly identify the single biggest trap in the data (e.g., negative Free Cash Flow due to surging CapEx, binary earnings release within 14 days, overhead Volume POC supply, or high Beta shock vulnerability).
+4. **Confirm UI Page-Driver Actions**:
+   - Briefly mention in your opening or closing line what you did on the page for the user (e.g., *"🧭 **Page Driver Executed:** Loaded **META**, opened the **Financials (Quarterly)** tab, and plotted **Street Mean/Low Targets** on your candlestick chart."*).
+5. **Strict Output Footer**:
+   - If you want to trigger any additional UI page-driver commands based on your findings (such as plotting specific price levels you discovered in the RAG data), you may optionally emit:
+     `UI_COMMANDS_JSON: [{"cmd": "PLOT_CHART_LINES", "lines": [{"price": 325.78, "color": "#22c55e", "title": "Street Mean Target"}]}]`
+   - On the very final line of your response, ALWAYS output exactly 3 high-signal follow-up questions formatted strictly as:
+     `FOLLOW_UPS: Question 1? | Question 2? | Question 3?`"""
+
+
 def _format_intel_brief_for_llm(intel: dict) -> str:
+    """Builds a comprehensive, citation-indexed 7-corpus RAG Evidence Pack from 17-module server intelligence."""
     if not intel or not intel.get("overview"):
         return ""
     ov = intel.get("overview") or {}
@@ -2371,6 +2436,7 @@ def _format_intel_brief_for_llm(intel: dict) -> str:
     er = intel.get("earnings") or {}
     fin = intel.get("financials") or {}
     hd = intel.get("holdings") or {}
+    ev = intel.get("events") or {}
     nw = intel.get("news") or {}
     ccy = intel.get("currency") or "$"
     sym = intel.get("symbol") or ov.get("symbol") or ""
@@ -2379,22 +2445,526 @@ def _format_intel_brief_for_llm(intel: dict) -> str:
     prof = an.get("profitability") or {}
     val = an.get("valuation") or {}
     hl = fin.get("highlights") or {}
+
+    # 1. Multi-quarter & Annual financial statement rows
     q_rows = fin.get("quarterly") or []
-    lq = q_rows[-1] if q_rows else {}
-    headlines = [f"'{h.get('title')}' ({h.get('publisher')}, {h.get('sentiment')})" for h in (nw.get("headlines") or [])[:4]]
+    a_rows = fin.get("annual") or []
+    q_table_lines = []
+    for r in q_rows[-5:]:
+        q_table_lines.append(
+            f"    • [Qtr {r.get('date')}]: Rev={r.get('revenue_fmt')}, GrossProfit={r.get('gross_profit_fmt')}, "
+            f"OpInc={r.get('operating_income_fmt')}, EBITDA={r.get('ebitda_fmt')}, NetInc={r.get('net_income_fmt')} "
+            f"(NetMargin={r.get('net_margin_pct')}%), EPS={r.get('eps')}, OpCF={r.get('operating_cash_flow_fmt')}, "
+            f"CapEx={r.get('capex_fmt')}, FCF={r.get('free_cash_flow_fmt')}, Cash={r.get('total_cash_fmt')}, Debt={r.get('total_debt_fmt')}"
+        )
+    a_table_lines = []
+    for r in a_rows[-4:]:
+        a_table_lines.append(
+            f"    • [FY {r.get('date')}]: Rev={r.get('revenue_fmt')}, OpInc={r.get('operating_income_fmt')}, "
+            f"NetInc={r.get('net_income_fmt')} ({r.get('net_margin_pct')}%), OpCF={r.get('operating_cash_flow_fmt')}, "
+            f"CapEx={r.get('capex_fmt')}, FCF={r.get('free_cash_flow_fmt')}, Cash={r.get('total_cash_fmt')}, Debt={r.get('total_debt_fmt')}"
+        )
+
+    # 2. Earnings Beat/Miss & 30D Estimate Revisions
+    eps_hist_lines = []
+    for e in (er.get("eps_history") or [])[-4:]:
+        eps_hist_lines.append(
+            f"    • [{e.get('quarter')} ({e.get('period')})]: Est={e.get('eps_estimate')}, Actual={e.get('eps_actual')}, "
+            f"Surprise={e.get('surprise_pct')}% ({'BEAT' if e.get('beat') else 'MISS'})"
+        )
+    rev_trend_lines = []
+    for t in (er.get("trend_estimates") or [])[:4]:
+        rev_trend_lines.append(
+            f"    • [Horizon {t.get('period')} ({t.get('end_date')})]: EPS Est={t.get('eps_avg')} (Low {t.get('eps_low')}–High {t.get('eps_high')}), "
+            f"Rev Est={t.get('rev_avg_fmt')} (YoY {t.get('rev_growth_pct')}%), 30D Revisions: +{t.get('up_last_30d')} Up / -{t.get('down_last_30d')} Down"
+        )
+
+    # 3. Top Institutional 13F Holders & Form 4 Insiders
+    inst_lines = [
+        f"{i.get('organization')} ({i.get('pct_held')}% held, {i.get('value_fmt')}, QoQ {i.get('change_pct') or 0:+.2f}%)"
+        for i in (hd.get("top_institutions") or [])[:5]
+    ]
+    insider_lines = [
+        f"{t.get('name')} ({t.get('relation')}): {'BUY' if t.get('is_buy') else 'SALE'} {t.get('shares_fmt')} sh ({t.get('value_fmt')}) on {t.get('date')}"
+        for t in (hd.get("insider_transactions") or [])[:5]
+    ]
+
+    # 4. Analyst Upgrades/Downgrades & SEC Filings
+    act_lines = [
+        f"{a.get('date')} {a.get('firm')}: {a.get('pt_action') or a.get('action')} ({a.get('from_grade') or ''} -> {a.get('to_grade')}, PT {a.get('prior_pt') or '—'} -> {a.get('current_pt') or '—'})"
+        for a in (ev.get("analyst_actions") or [])[:6]
+    ]
+    sec_lines = [
+        f"{s.get('date')} [{s.get('type')}]: {s.get('title')}"
+        for s in (ev.get("sec_filings") or [])[:5]
+    ]
+
+    # 5. Live News Wire
+    headlines = [
+        f"[{h.get('sentiment')}|{h.get('category')}] '{h.get('title')}' ({h.get('publisher')}, {h.get('published')})"
+        for h in (nw.get("headlines") or [])[:8]
+    ]
 
     lines = [
-        f"=== VERIFIED SERVER FUNDAMENTALS & INTELLIGENCE FOR {sym} ({ov.get('name')}) ===",
-        f"• Spot: {ccy}{ov.get('regular_price')} ({ov.get('regular_change_pct') or 0:+.2f}%) | After-Hours: {ov.get('post_market_price') or 'N/A'} | Pre-Market: {ov.get('pre_market_price') or 'N/A'} | 52W Range: {ccy}{ov.get('week_52_low')}–{ccy}{ov.get('week_52_high')} | Mkt Cap: {ov.get('market_cap_fmt')}",
-        f"• Valuation: Trailing P/E={val.get('pe_ttm')}x, Forward P/E={val.get('pe_fwd')}x, PEG={val.get('peg_ratio')}x, P/S={val.get('ps_ratio')}x, P/B={val.get('pb_ratio')}x, EV/EBITDA={val.get('ev_ebitda')}x, Div Yield={ov.get('dividend_yield_pct')}%",
-        f"• Wall Street Consensus ({an.get('analyst_count')} Analysts): {an.get('recommendation_key')} ({rt.get('bullish_pct')}% Bullish: {rt.get('strong_buy')} Strong Buy, {rt.get('buy')} Buy, {rt.get('hold')} Hold, {rt.get('sell')} Sell, {rt.get('strong_sell')} Strong Sell) | 12M Target: Mean {ccy}{pt.get('mean')} ({pt.get('upside_pct') or 0:+.1f}% upside), Low {ccy}{pt.get('low')}, High {ccy}{pt.get('high')}",
-        f"• Profitability & Growth: Gross Margin={prof.get('gross_margin_pct')}%, Operating Margin={prof.get('operating_margin_pct')}%, Net Margin={prof.get('profit_margin_pct')}%, ROE={prof.get('roe_pct')}%, ROA={prof.get('roa_pct')}%, Rev Growth YoY={prof.get('revenue_growth_yoy_pct')}%, Earnings Growth YoY={prof.get('earnings_growth_yoy_pct')}%",
-        f"• Earnings Track Record: Beat {er.get('beat_count_last_4q')}/{er.get('total_quarters_tracked')} recent quarters (Avg Surprise: {er.get('avg_surprise_pct') or 0:+.1f}%) | Next Earnings Date: {er.get('next_earnings_date')} ({er.get('days_until_earnings')} days away) | Next Qtr Consensus EPS: {er.get('next_eps_estimate', {}).get('avg')}, Rev: {er.get('next_rev_estimate', {}).get('avg_fmt')}",
-        f"• Latest Quarter Financials ({lq.get('date', 'Latest Q')}): Revenue={lq.get('revenue_fmt')}, Net Income={lq.get('net_income_fmt')} ({lq.get('net_margin_pct')}% margin), Operating Cash Flow={lq.get('operating_cash_flow_fmt')}, CapEx={lq.get('capex_fmt')}, Free Cash Flow={lq.get('free_cash_flow_fmt')}",
-        f"• Balance Sheet & Ownership: Cash={hl.get('total_cash_fmt')}, Total Debt={hl.get('total_debt_fmt')}, Debt/Equity={hl.get('debt_to_equity_pct')}%, Current Ratio={hl.get('current_ratio')}x | Institutions={hd.get('institutions_pct')}%, Insiders={hd.get('insiders_pct')}%, Short % of Float={hd.get('short_pct_of_float')}%",
-        f"• Live News Wire ({nw.get('overall_sentiment')} — {nw.get('bullish_count')} Bullish / {nw.get('bearish_count')} Bearish): " + ("; ".join(headlines) if headlines else "No major headlines."),
+        f"=== CITATION-INDEXED SERVER RAG CORPUS FOR {sym} ({ov.get('name')}) ===",
+        f"[RAG:OVERVIEW] Spot={ccy}{ov.get('regular_price')} ({ov.get('regular_change_pct') or 0:+.2f}%) | After-Hours={ov.get('post_market_price') or 'N/A'} | Pre-Market={ov.get('pre_market_price') or 'N/A'} | 52W Range={ccy}{ov.get('week_52_low')}–{ccy}{ov.get('week_52_high')} | Mkt Cap={ov.get('market_cap_fmt')} | Sector={ov.get('sector')} ({ov.get('industry')}) | Beta={ov.get('beta')} | Div Yield={ov.get('dividend_yield_pct')}%",
+        f"[RAG:ANALYST_CONSENSUS] Wall Street Rating={an.get('recommendation_key')} ({an.get('analyst_count')} Analysts: {rt.get('bullish_pct')}% Bullish — {rt.get('strong_buy')} Strong Buy, {rt.get('buy')} Buy, {rt.get('hold')} Hold, {rt.get('sell')} Sell, {rt.get('strong_sell')} Strong Sell) | 12M Price Targets: Mean={ccy}{pt.get('mean')} ({pt.get('upside_pct') or 0:+.1f}% upside), Low={ccy}{pt.get('low')}, High={ccy}{pt.get('high')} | Valuation Multiples: Trailing P/E={val.get('pe_ttm')}x, Forward P/E={val.get('pe_fwd')}x, PEG={val.get('peg_ratio')}x, P/S={val.get('ps_ratio')}x, P/B={val.get('pb_ratio')}x, EV/EBITDA={val.get('ev_ebitda')}x, EV/Rev={val.get('ev_revenue')}x | Margins & Returns: Gross={prof.get('gross_margin_pct')}%, Operating={prof.get('operating_margin_pct')}%, EBITDA={prof.get('ebitda_margin_pct')}%, Net={prof.get('profit_margin_pct')}%, ROE={prof.get('roe_pct')}%, ROA={prof.get('roa_pct')}%, Rev Growth YoY={prof.get('revenue_growth_yoy_pct')}%, Earnings Growth YoY={prof.get('earnings_growth_yoy_pct')}%",
+        f"[RAG:EARNINGS_MATRIX] Beat Streak={er.get('beat_count_last_4q')}/{er.get('total_quarters_tracked')} quarters (Avg Surprise={er.get('avg_surprise_pct') or 0:+.1f}%) | Next Earnings={er.get('next_earnings_date')} ({er.get('days_until_earnings')} days away) | Next Qtr Consensus EPS={er.get('next_eps_estimate', {}).get('avg')}, Rev={er.get('next_rev_estimate', {}).get('avg_fmt')}",
+        *(eps_hist_lines or ["    • No quarterly EPS history rows."]),
+        *(rev_trend_lines or []),
+        f"[RAG:FINANCIAL_STATEMENTS] Highlights: TTM Rev={hl.get('total_revenue_ttm_fmt')}, TTM EBITDA={hl.get('ebitda_ttm_fmt')}, TTM OpCF={hl.get('operating_cash_flow_ttm_fmt')}, TTM FCF={hl.get('free_cash_flow_ttm_fmt')}, Total Cash={hl.get('total_cash_fmt')}, Total Debt={hl.get('total_debt_fmt')}, Debt/Equity={hl.get('debt_to_equity_pct')}%, Current Ratio={hl.get('current_ratio')}x",
+        "  Quarterly Trajectory (Last 5Q):",
+        *(q_table_lines or ["    • No quarterly statement rows."]),
+        "  Annual Trajectory (Last 4Y):",
+        *(a_table_lines or ["    • No annual statement rows."]),
+        f"[RAG:OWNERSHIP_SHORT] Institutions={hd.get('institutions_pct')}% ({hd.get('institutions_count')} funds), Insiders={hd.get('insiders_pct')}%, Short % of Float={hd.get('short_pct_of_float')}%, Short Ratio={hd.get('short_ratio_days')} days | Top 13F Holders: " + ("; ".join(inst_lines) if inst_lines else "N/A") + " | Recent Form 4 Insider Trades: " + ("; ".join(insider_lines) if insider_lines else "None reported"),
+        f"[RAG:SEC_FILINGS_EVENTS] Recent Analyst Rating/Target Actions: " + ("; ".join(act_lines) if act_lines else "None") + " | SEC EDGAR Filings: " + ("; ".join(sec_lines) if sec_lines else "None"),
+        f"[RAG:NEWS_WIRE] Wire Consensus={nw.get('overall_sentiment')} ({nw.get('bullish_count')} Bullish / {nw.get('neutral_count')} Neutral / {nw.get('bearish_count')} Bearish): " + (" | ".join(headlines) if headlines else "No major headlines."),
     ]
     return "\n".join(lines)
+
+
+def _call_gemini_llm(
+    prompt_text: str,
+    user_api_key: str = "",
+    preferred_model: str = "gemini-2.5-pro",
+    max_tokens: int = 4096,
+    temperature: float = 0.2,
+    timeout_sec: int = 35,
+) -> tuple:
+    """Calls Gemini (prioritizing gemini-2.5-pro for maximum reasoning quality, falling back to gemini-2.5-flash) via Developer API or Cloud Run Vertex AI."""
+    models_order = []
+    # Prioritize gemini-2.5-pro when quality is paramount, while respecting user choice and ensuring resilient fallback
+    for m in (preferred_model, "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"):
+        if m and m not in models_order:
+            models_order.append(m)
+
+    gen_body = {
+        "contents": [{"role": "user", "parts": [{"text": prompt_text}]}],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+        },
+    }
+    body_bytes = json.dumps(gen_body).encode("utf-8")
+
+    def _extract_candidate_text(resp_d: dict) -> str:
+        parts = (((resp_d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+        texts = [p.get("text", "") for p in parts if not p.get("thought") and p.get("text")]
+        if not texts and parts:
+            texts = [p.get("text", "") for p in parts if p.get("text")]
+        return "\n".join(texts).strip()
+
+    # 1. Try Gemini Developer API if an API key is provided
+    if user_api_key:
+        for m in models_order:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(m)}:generateContent?key={urllib.parse.quote(user_api_key)}"
+                req = urllib.request.Request(url, data=body_bytes, headers={"Content-Type": "application/json"}, method="POST")
+                with urllib.request.urlopen(req, timeout=timeout_sec) as r:
+                    resp_d = json.loads(r.read().decode("utf-8"))
+                txt = _extract_candidate_text(resp_d)
+                if txt:
+                    return txt, m, "Gemini API"
+            except Exception:
+                continue
+
+    # 2. Try Google Cloud Vertex AI (Zero-Key Cloud Run Service Account Authentication)
+    gcp_token, gcp_proj = _get_gcp_vertex_auth()
+    if gcp_token and gcp_proj:
+        for loc in ("us-central1", "global", "asia-south1"):
+            host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
+            for m in models_order:
+                try:
+                    url = (
+                        f"https://{host}/v1/projects/{urllib.parse.quote(gcp_proj)}"
+                        f"/locations/{loc}/publishers/google/models/{urllib.parse.quote(m)}:generateContent"
+                    )
+                    req = urllib.request.Request(
+                        url,
+                        data=body_bytes,
+                        headers={
+                            "Authorization": f"Bearer {gcp_token}",
+                            "Content-Type": "application/json",
+                        },
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=timeout_sec) as r:
+                        resp_d = json.loads(r.read().decode("utf-8"))
+                    txt = _extract_candidate_text(resp_d)
+                    if txt:
+                        return txt, m, f"Vertex AI ({loc})"
+                except Exception:
+                    continue
+
+    return None, None, None
+
+
+def _build_planner_execution_plan(question: str, active_sym: str, active_market: str) -> dict:
+    """
+    Stage 1 Strategic Planner: Decomposes the user's question into falsifiable hypotheses,
+    selects RAG corpora & Attached Skills, and emits deterministic UI Page-Driver commands.
+    """
+    q_low = question.lower()
+    q_up = question.upper()
+
+    us_known = set(
+        [t for lst in WEEKLY_PRESETS.values() for t in lst]
+        + ["TSM", "ASML", "SMCI", "ARM", "INTC", "MU", "QCOM", "SNOW", "UBER", "ABNB", "SHOP", "PANW", "CRWD", "PYPL", "SQ", "DIS", "NKE", "BA", "BABA", "PDD", "MELI"]
+    )
+    in_known = set(
+        [t for lst in INDIA_WEEKLY_PRESETS.values() for t in lst]
+        + list(INDIA_COMPANY_SLUGS.keys())
+    )
+    known_tickers = us_known | in_known | {active_sym}
+
+    stop_words = {
+        "BUY", "SELL", "HOLD", "WAIT", "AVOID", "LONG", "SHORT", "CASH", "ETF", "USD", "INR", "NSE", "BSE", "NYSE",
+        "PE", "PEG", "EPS", "FCF", "ROE", "ROA", "EMA", "SMA", "RSI", "MACD", "ATR", "ADX", "VWAP", "POC", "VAH", "VAL",
+        "VAR", "CVAR", "MC", "GBM", "HRP", "SEC", "CEO", "CFO", "YOY", "QOQ", "TTM", "NTM", "DCF", "IPO", "AI", "US", "IN",
+        "INDIA", "INDIAN", "AMERICA", "AMERICAN", "NASDAQ", "WALL", "STREET", "DESK", "TAB", "VIEW", "PAGE", "PANEL",
+        "WHY", "HOW", "WHAT", "WHEN", "WHO", "WHICH", "SHOW", "OPEN", "LOAD", "SWITCH", "RUN", "PLOT", "DRAW", "SET",
+        "AND", "THE", "FOR", "WITH", "FROM", "INTO", "OVER", "UNDER", "DAYS", "PATHS", "CHART", "STOCK", "MARKET",
+        "TOP", "BEST", "WORST", "HIGH", "LOW", "MEAN", "BULL", "BEAR", "TEST", "SCAN", "NEWS", "RISK", "STOP", "LOSS",
+        "ELI5", "MODE", "VS", "COMPARE", "AUDIT", "CHECK", "TELL", "ME", "IS", "IT", "ON", "AT", "TO", "OF", "OR", "BY",
+        "QUARTERLY", "ANNUAL", "EARNINGS", "FINANCIALS", "HOLDINGS", "ANALYSIS", "OVERVIEW", "EVENTS", "FILINGS",
+    }
+
+    # Extract mentioned tickers
+    tokens = re.findall(r"\b[A-Z]{2,12}\b", q_up)
+    mentioned_syms = []
+    for t in tokens:
+        if t in known_tickers and t not in mentioned_syms:
+            mentioned_syms.append(t)
+
+    # Also detect explicit "load/analyze/switch to <TICKER>" even if not in preset list
+    explicit_matches = re.findall(
+        r"\b(?:load|analyze|switch\s+to|pull\s+up|open\s+ticker|look\s+at|chart\s+for|go\s+to)\s+\$?([A-Za-z]{2,12})\b",
+        question,
+        re.IGNORECASE,
+    )
+    explicit_primary_sym = None
+    for raw_cand in explicit_matches:
+        cand = raw_cand.upper()
+        if cand not in stop_words:
+            explicit_primary_sym = cand
+            if cand not in mentioned_syms:
+                mentioned_syms.insert(0, cand)
+            break
+
+    # Determine primary symbol vs comparison symbols
+    is_comparison = bool(re.search(r"\b(compare|vs\.?|versus|head-to-head|against|better\s+buy)\b", q_low))
+    other_syms = [s for s in mentioned_syms if s != active_sym]
+
+    if explicit_primary_sym and explicit_primary_sym != active_sym:
+        primary_sym = explicit_primary_sym
+    elif other_syms and not is_comparison and active_sym not in tokens:
+        # User asked about a single different stock (e.g. "How is META's cash flow and valuation?") -> drive page to META!
+        primary_sym = other_syms[0]
+    else:
+        primary_sym = active_sym
+
+    target_symbols = [primary_sym]
+    for s in mentioned_syms:
+        if s not in target_symbols and len(target_symbols) < 3:
+            target_symbols.append(s)
+    if is_comparison and len(target_symbols) == 1:
+        default_peer = "TCS" if (primary_sym in in_known or active_market == "IN") else ("AMD" if primary_sym == "NVDA" else "MSFT")
+        target_symbols.append(default_peer)
+
+    # Determine target market
+    target_market = active_market
+    if re.search(r"\b(india|indian|nse|nifty|rupee)\b", q_low) or primary_sym in in_known:
+        target_market = "IN"
+    elif re.search(r"\b(us\s+market|wall\s+street|nasdaq|nyse|s&p)\b", q_low) or (primary_sym in us_known and primary_sym not in in_known):
+        target_market = "US"
+
+    ui_commands = []
+    skills_invoked = []
+    rag_sources = ["fundamentals_overview", "analyst_consensus", "earnings_matrix", "financial_statements"]
+    tool_calls = [{"tool": "quant_dossier", "symbol": primary_sym}]
+
+    # 1. Market & Ticker Page-Driving Commands
+    if target_market != active_market:
+        ui_commands.append({
+            "cmd": "SWITCH_MARKET",
+            "market": target_market,
+            "reason": f"Switched active desk to {'🇮🇳 India (NSE)' if target_market == 'IN' else '🇺🇸 US Market'}",
+        })
+    if primary_sym != active_sym:
+        ui_commands.append({
+            "cmd": "LOAD_TICKER",
+            "symbol": primary_sym,
+            "market": target_market,
+            "reason": f"Loaded {primary_sym} across Candlestick Chart, Monte Carlo, Backtester & Intelligence Hub",
+        })
+
+    # 2. Timeframe / Range Page-Driving Command
+    range_match = re.search(r"\b(1m|3m|6m|1y|2y|5y|1\s*month|3\s*month|6\s*month|1\s*year|2\s*year|5\s*year)\b", q_low)
+    if range_match and re.search(r"\b(chart|range|timeframe|horizon|switch|show|view|zoom)\b", q_low):
+        raw_r = range_match.group(1)
+        r_map = {"1m": "1mo", "1 month": "1mo", "3m": "3mo", "3 month": "3mo", "6m": "6mo", "6 month": "6mo", "1y": "1y", "1 year": "1y", "2y": "2y", "2 year": "2y", "5y": "5y", "5 year": "5y"}
+        norm_r = r_map.get(raw_r.replace("  ", " "), "1y")
+        ui_commands.append({
+            "cmd": "SET_RANGE",
+            "range": norm_r,
+            "interval": "1wk" if norm_r == "5y" else "1d",
+            "reason": f"Updated candlestick chart range to {norm_r.upper()}",
+        })
+
+    # 3. Intelligence Hub Tab & Frequency Page-Driving Commands
+    if re.search(r"\b(financials?|income\s+statement|balance\s+sheet|cash\s+flow|fcf|free\s+cash\s+flow|capex|debt|ebitda|revenue\s+table)\b", q_low):
+        freq = "annual" if re.search(r"\b(annual|yearly|4y|4-year|full\s+year)\b", q_low) else "quarterly"
+        ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "financials", "reason": "Opened Google Finance 'Financials' tab"})
+        ui_commands.append({"cmd": "SET_FIN_FREQ", "freq": freq, "reason": f"Switched financial statements table to {freq.title()} view"})
+        if "skill_rag_fundamentals_filings" not in skills_invoked:
+            skills_invoked.append("skill_rag_fundamentals_filings")
+    elif re.search(r"\b(earnings?|eps|beat|miss|surprise|guidance|revisions?|next\s+earnings)\b", q_low):
+        ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "earnings", "reason": "Opened Google Finance 'Earnings' tab (EPS Beat/Miss & 30D Revisions)"})
+        if "skill_earnings_street_consensus" not in skills_invoked:
+            skills_invoked.append("skill_earnings_street_consensus")
+    elif re.search(r"\b(holdings?|institutions?|institutional|13f|insiders?|form\s*4|short\s+float|short\s+interest|smart\s+money)\b", q_low):
+        ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "holdings", "reason": "Opened Google Finance 'Holdings' tab (13F Funds, Insiders & Short Float)"})
+        if "ownership_short" not in rag_sources:
+            rag_sources.append("ownership_short")
+        if "skill_rag_fundamentals_filings" not in skills_invoked:
+            skills_invoked.append("skill_rag_fundamentals_filings")
+    elif re.search(r"\b(sec\s+filings?|10-k|10-q|8-k|edgar|upgrades?|downgrades?|analyst\s+actions?|price\s+target\s+revisions?)\b", q_low):
+        ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "events", "reason": "Opened Google Finance 'Events & SEC Filings' tab"})
+        if "sec_filings_events" not in rag_sources:
+            rag_sources.append("sec_filings_events")
+        if "skill_rag_fundamentals_filings" not in skills_invoked:
+            skills_invoked.append("skill_rag_fundamentals_filings")
+    elif re.search(r"\b(news|headlines?|wire|catalysts?|sentiment|articles?)\b", q_low):
+        ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "news", "reason": "Opened Google Finance 'News & Wire' tab"})
+        if "news_wire" not in rag_sources:
+            rag_sources.append("news_wire")
+        if "skill_news_catalyst_rag" not in skills_invoked:
+            skills_invoked.append("skill_news_catalyst_rag")
+    elif re.search(r"\b(analyst|wall\s+street|price\s+target|consensus|valuation|p/e|peg|ev/ebitda|overvalued|undervalued|margins?|roe)\b", q_low):
+        ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "analysis", "reason": "Opened Google Finance 'Analysis' tab (Street Targets & Multiples)"})
+        if "skill_earnings_street_consensus" not in skills_invoked:
+            skills_invoked.append("skill_earnings_street_consensus")
+
+    # Always include ownership, filings & news in deep RAG so the Reasoner has 360-degree visibility
+    for src in ("ownership_short", "sec_filings_events", "news_wire"):
+        if src not in rag_sources:
+            rag_sources.append(src)
+
+    # 4. Monte Carlo Simulation Page-Driving Commands
+    mc_days_m = re.search(r"(\d{1,3})\s*(?:-|\s)?(?:day|d\b)", q_low)
+    mc_paths_m = re.search(r"(\d{3,4})\s*(?:monte\s+carlo\s+)?paths", q_low)
+    wants_mc = bool(re.search(r"\b(monte\s+carlo|merton|jump-?diffusion|gbm|bootstrap|simulate|simulation|tail\s+risk|cvar|var|fan\s+chart)\b", q_low))
+    if wants_mc:
+        if "skill_stochastic_tail_risk" not in skills_invoked:
+            skills_invoked.append("skill_stochastic_tail_risk")
+        mc_model = "bootstrap" if "bootstrap" in q_low else ("gbm" if "gbm" in q_low or "geometric" in q_low else "jump")
+        mc_days = max(5, min(252, int(mc_days_m.group(1)))) if mc_days_m else 63
+        mc_paths = max(200, min(3000, int(mc_paths_m.group(1)))) if mc_paths_m else 1500
+        ui_commands.append({
+            "cmd": "RUN_MONTE_CARLO",
+            "paths": mc_paths,
+            "days": mc_days,
+            "model": mc_model,
+            "vol_mode": "ewma",
+            "reason": f"Re-ran Stochastic Monte Carlo ({mc_paths} paths, {mc_days}d, {mc_model.upper()})",
+        })
+        ui_commands.append({"cmd": "SCROLL_TO_PANEL", "panel": "mcPanel", "reason": "Focused Stochastic Monte Carlo Fan Chart"})
+
+    # 5. Backtester Page-Driving Commands
+    if re.search(r"\b(backtest|backtester|quants\.md|strategies|strategy|meta-?boss|kama|supertrend|connors|pead|walk-?forward)\b", q_low):
+        if "skill_quant_regime_backtester" not in skills_invoked:
+            skills_invoked.append("skill_quant_regime_backtester")
+        ui_commands.append({"cmd": "SCROLL_TO_PANEL", "panel": "btPanel", "reason": "Focused 7-Strategy Backtester & Walk-Forward Meta-Boss"})
+
+    # 6. Portfolio Capital / Sizing Page-Driving Command
+    cap_match = re.search(r"\b(?:invest|capital|portfolio|account|size|allocate|deploy)\s+(?:of\s+|to\s+)?[$₹]?(\d[\d,]*(?:\.\d+)?)\s*(k|m|lakh|cr)?\b", q_low)
+    if cap_match:
+        raw_num = float(cap_match.group(1).replace(",", ""))
+        mult_s = (cap_match.group(2) or "").lower()
+        if mult_s == "k":
+            raw_num *= 1000
+        elif mult_s == "m":
+            raw_num *= 1_000_000
+        elif mult_s == "lakh":
+            raw_num *= 100_000
+        elif mult_s == "cr":
+            raw_num *= 10_000_000
+        if raw_num >= 500:
+            ui_commands.append({
+                "cmd": "SET_CAPITAL",
+                "capital": int(raw_num),
+                "reason": f"Updated Portfolio Account Size to {'₹' if target_market == 'IN' else '$'}{int(raw_num):,} and recalculated share sizing",
+            })
+
+    # 7. Weekly Alpha Scanner Page-Driving Command
+    if re.search(r"\b(weekly|top\s+5|top\s+picks|scanner|screen|screener|hrp|risk\s+parity|basket|playbook)\b", q_low):
+        if "skill_cross_sectional_screener" not in skills_invoked:
+            skills_invoked.append("skill_cross_sectional_screener")
+        preset = "ai_semis" if re.search(r"\b(semi|semiconductor|ai\s+chip)\b", q_low) else (
+            "momentum" if "momentum" in q_low else (
+                "defensive" if "defensive" in q_low else (
+                    "in_leaders" if target_market == "IN" else "leaders"
+                )
+            )
+        )
+        tool_calls.append({"tool": "weekly_alpha_scan", "market": target_market, "preset": preset})
+        ui_commands.append({
+            "cmd": "RUN_WEEKLY_SCAN",
+            "preset": preset,
+            "reason": f"Triggered Weekly Alpha Cross-Sectional Scanner ({preset})",
+        })
+        ui_commands.append({"cmd": "SCROLL_TO_PANEL", "panel": "weeklyPanel", "reason": "Focused Weekly Alpha Playbook & HRP Basket"})
+
+    # 8. Peer Comparison Tool
+    if is_comparison and len(target_symbols) >= 2:
+        tool_calls.append({"tool": "peer_comparison", "symbols": target_symbols[:3]})
+
+    # 9. Macro Stress-Test Shock Tool
+    shock_m = re.search(r"(-?\d+(?:\.\d+)?)\s*%", q_low)
+    if re.search(r"\b(stress\s*test|shock|crash|drops?|falls?)\b", q_low):
+        shock_pct = -abs(float(shock_m.group(1))) if shock_m else -5.0
+        tool_calls.append({"tool": "stress_test_shock", "symbol": primary_sym, "shock_pct": shock_pct})
+        if "skill_stochastic_tail_risk" not in skills_invoked:
+            skills_invoked.append("skill_stochastic_tail_risk")
+
+    if ui_commands and "skill_page_driver" not in skills_invoked:
+        skills_invoked.insert(0, "skill_page_driver")
+    if "skill_quant_regime_backtester" not in skills_invoked:
+        skills_invoked.append("skill_quant_regime_backtester")
+    if "skill_earnings_street_consensus" not in skills_invoked:
+        skills_invoked.append("skill_earnings_street_consensus")
+
+    # Formulate the 3 Falsifiable Hypotheses for the Planner Trace
+    hypotheses = [
+        f"H1 (1–8W Technical & Regime): Test whether {primary_sym} is in a positive autocorrelation trend (Hurst H > 0.55, Price > EMA20/KAMA & Volume POC) or in a short-term distribution/mean-reversion regime where systematic strategies sit in CASH.",
+        f"H2 (12–24M Fundamental & Street Consensus): Audit {primary_sym}'s Wall Street price target upside (Mean & Low target floor), last 4Q EPS beat/miss streak, 30D analyst revisions, and 5-quarter Free Cash Flow vs. CapEx trajectory.",
+        f"H3 (Tail-Risk & Catalyst Asymmetry): Evaluate {primary_sym}'s Merton Jump-Diffusion P5/CVaR downside risk, upcoming earnings binary event window, 13F institutional/insider flows, and live news catalysts.",
+    ]
+
+    thought_summary = (
+        f"Decomposed request for {', '.join(target_symbols)} ({'🇮🇳 NSE' if target_market == 'IN' else '🇺🇸 US'}): "
+        f"executing {len(rag_sources)} RAG corpora retrievals, {len(tool_calls)} server quantitative tool(s), "
+        f"and {len(ui_commands)} live UI page-driver action(s)."
+    )
+
+    return {
+        "thought_summary": thought_summary,
+        "hypotheses": hypotheses,
+        "target_symbols": target_symbols,
+        "target_market": target_market,
+        "skills_invoked": skills_invoked,
+        "rag_sources": rag_sources,
+        "tool_calls": tool_calls,
+        "ui_commands": ui_commands,
+    }
+
+
+def _execute_rag_and_quant_tools(plan: dict, question: str) -> tuple:
+    """
+    Stage 2 Parallel RAG & Quantitative Tool Executor:
+    Retrieves the 17-module server RAG intelligence + live OHLCV quantitative candidate metrics
+    for all target symbols, and enriches UI Page-Driver chart lines when appropriate.
+    """
+    target_syms = plan.get("target_symbols") or ["NVDA"]
+    target_mkt = plan.get("target_market") or "US"
+    q_low = question.lower()
+
+    rag_blocks = []
+    quant_blocks = []
+    rag_trace = []
+    primary_intel = None
+    primary_quant = None
+
+    for idx, s in enumerate(target_syms):
+        s_mkt = "IN" if s in INDIA_COMPANY_SLUGS or target_mkt == "IN" else "US"
+        # 2A. Retrieve 17-module Fundamental, Earnings, Cash Flow, Holdings, Filings & News RAG
+        try:
+            intel_d = fetch_stock_intelligence(s, s_mkt)
+            if idx == 0:
+                primary_intel = intel_d
+            rag_blocks.append(_format_intel_brief_for_llm(intel_d))
+            ov = intel_d.get("overview") or {}
+            an = intel_d.get("analysis") or {}
+            er = intel_d.get("earnings") or {}
+            fin = intel_d.get("financials") or {}
+            nw = intel_d.get("news") or {}
+            rag_trace.append({
+                "symbol": s,
+                "corpus": "17-Module Fundamental, Earnings, 13F & News RAG",
+                "summary": (
+                    f"Spot {intel_d.get('currency', '$')}{ov.get('regular_price')} · "
+                    f"Street {an.get('recommendation_key')} ({an.get('analyst_count')} analysts, Mean PT {intel_d.get('currency', '$')}{an.get('price_targets', {}).get('mean')}) · "
+                    f"EPS Beats {er.get('beat_count_last_4q')}/4Q · "
+                    f"{len(fin.get('quarterly') or [])}Q + {len(fin.get('annual') or [])}Y Financials · "
+                    f"{len(nw.get('headlines') or [])} Wire Headlines ({nw.get('overall_sentiment')})"
+                ),
+            })
+        except Exception as e:
+            rag_trace.append({"symbol": s, "corpus": "Fundamental RAG", "summary": f"Partial fallback ({e})"})
+
+        # 2B. Execute Server-Side Quantitative OHLCV Tool (_analyze_weekly_candidate) for multi-ticker & cross-Verification
+        try:
+            bench_sym = "NIFTY50" if s_mkt == "IN" else "SPY"
+            bench_payload = build_chart_payload(bench_sym, "6mo", "1d")
+            bench_bars = ((bench_payload.get("chart") or {}).get("result") or [{}])[0]
+            bench_closes = (((bench_bars.get("indicators") or {}).get("quote") or [{}])[0].get("close") or [])
+            bench_closes = [float(x) for x in bench_closes if x is not None]
+            cand_q = _analyze_weekly_candidate(s, bench_closes, s_mkt)
+            if cand_q:
+                if idx == 0:
+                    primary_quant = cand_q
+                ccy = "₹" if s_mkt == "IN" else "$"
+                wp = cand_q.get("weekly_plan") or {}
+                piv = cand_q.get("pivots") or {}
+                quant_blocks.append(
+                    f"[TOOL:QUANT_DOSSIER:{s}] Spot={ccy}{cand_q.get('price')} ({cand_q.get('ret_5d_pct'):+.2f}% 5D, {cand_q.get('ret_21d_pct'):+.2f}% 21D) | "
+                    f"Weekly Alpha Score={cand_q.get('weekly_alpha_score')}/100 ({cand_q.get('weekly_action')} · {cand_q.get('setup_type')}) | "
+                    f"Mansfield RS vs Bench={cand_q.get('rs_21d_vs_spy'):+.2f}% | WorldQuant Alpha#101={cand_q.get('wq_alpha101'):+.2f} | "
+                    f"Wilder RSI(14)={cand_q.get('rsi_14')} | Connors RSI(2)={cand_q.get('connors_rsi_2')} | ATR Stretch={cand_q.get('atr_stretch')}x ATR | "
+                    f"TTM Squeeze={cand_q.get('squeeze_status')} | Hurst H={cand_q.get('hurst')} | "
+                    f"5D Walk-Forward Hit Rate={cand_q.get('walk_forward_5d', {}).get('win_rate_pct')}% | "
+                    f"5D Monte Carlo Win Odds={cand_q.get('mc_5d', {}).get('prob_up_pct')}% | "
+                    f"Floor Pivots: S1={ccy}{piv.get('s1')}, Pivot={ccy}{piv.get('pivot')}, R1={ccy}{piv.get('r1')} | "
+                    f"Trade Levels: Entry={ccy}{wp.get('entry_zone', [0, 0])[0]}–{ccy}{wp.get('entry_zone', [0, 0])[1]}, Stop={ccy}{wp.get('stop_loss')}, TP1={ccy}{wp.get('friday_tp1')}, TP2={ccy}{wp.get('friday_tp2')}"
+                )
+                rag_trace.append({
+                    "symbol": s,
+                    "corpus": "Server OHLCV Quant & Factor Tool",
+                    "summary": (
+                        f"Alpha {cand_q.get('weekly_alpha_score')}/100 ({cand_q.get('weekly_action')}) · "
+                        f"RSI(14) {cand_q.get('rsi_14')} · Hurst {cand_q.get('hurst')} · "
+                        f"5D WF Win {cand_q.get('walk_forward_5d', {}).get('win_rate_pct')}%"
+                    ),
+                })
+        except Exception:
+            pass
+
+    # 2C. If user asked to plot levels, targets, support/resistance, or divergence on the chart, auto-emit PLOT_CHART_LINES
+    wants_plot = bool(re.search(r"\b(plot|draw|mark|show\s+on\s+chart|price\s+target|support|resistance|entry|stop|divergence|why\s+is)\b", q_low))
+    if wants_plot and primary_intel:
+        lines_to_plot = []
+        pt = (primary_intel.get("analysis") or {}).get("price_targets") or {}
+        if pt.get("mean") and re.search(r"\b(target|street|analyst|wall\s+street|divergence|plot|draw|why)\b", q_low):
+            lines_to_plot.append({"price": float(pt["mean"]), "color": "#22c55e", "title": f"Street Mean PT ({pt['mean']})"})
+        if pt.get("low") and re.search(r"\b(target|street|analyst|wall\s+street|divergence|floor|low)\b", q_low):
+            lines_to_plot.append({"price": float(pt["low"]), "color": "#eab308", "title": f"Street Low PT ({pt['low']})"})
+        if primary_quant:
+            wp = primary_quant.get("weekly_plan") or {}
+            if wp.get("stop_loss") and re.search(r"\b(stop|entry|support|plot|draw)\b", q_low):
+                lines_to_plot.append({"price": float(wp["stop_loss"]), "color": "#ef4444", "title": "Quant Stop-Loss"})
+            if wp.get("friday_tp1") and re.search(r"\b(target|tp1|resistance|plot|draw)\b", q_low):
+                lines_to_plot.append({"price": float(wp["friday_tp1"]), "color": "#38bdf8", "title": "Quant TP1 Target"})
+        if lines_to_plot:
+            plan["ui_commands"].append({
+                "cmd": "PLOT_CHART_LINES",
+                "lines": lines_to_plot[:4],
+                "reason": f"Plotted {len(lines_to_plot[:4])} institutional reference level(s) onto the TradingView candlestick chart",
+            })
+            if "skill_page_driver" not in plan["skills_invoked"]:
+                plan["skills_invoked"].insert(0, "skill_page_driver")
+
+    return rag_blocks, quant_blocks, rag_trace
 
 
 def handle_ai_chat(payload: dict) -> dict:
@@ -2408,58 +2978,39 @@ def handle_ai_chat(payload: dict) -> dict:
     client_telemetry = payload.get("telemetry") or ""
     history = payload.get("history") or []
     user_api_key = (payload.get("api_key") or os.environ.get("GEMINI_API_KEY") or "").strip()
-    preferred_model = (payload.get("model") or "gemini-2.5-flash").strip()
+    preferred_model = (payload.get("model") or "gemini-2.5-pro").strip()
 
-    # Fetch live server fundamentals for the active symbol + up to 2 mentioned peer tickers
-    known_tickers = set(
-        WEEKLY_PRESETS["leaders"]
-        + WEEKLY_PRESETS["ai_semis"]
-        + WEEKLY_PRESETS["momentum"]
-        + WEEKLY_PRESETS["defensive"]
-        + INDIA_WEEKLY_PRESETS["in_leaders"]
-        + INDIA_WEEKLY_PRESETS["in_it_banks"]
-        + INDIA_WEEKLY_PRESETS["in_auto_pharma"]
-        + [sym]
-    )
-    tokens = re.findall(r"\b[A-Z]{2,12}\b", question.upper())
-    extra_syms = []
-    for t in tokens:
-        if t in known_tickers and t != sym and t not in extra_syms:
-            extra_syms.append(t)
-    syms_to_enrich = [sym] + extra_syms[:2]
+    # ── STAGE 1: STRATEGIC PLANNER & UI PAGE-DRIVER ORCHESTRATOR ──
+    plan = _build_planner_execution_plan(question, sym, market)
 
-    intel_blocks = []
-    for s in syms_to_enrich:
-        try:
-            s_mkt = "IN" if s in INDIA_COMPANY_SLUGS or market == "IN" else "US"
-            intel_d = fetch_stock_intelligence(s, s_mkt)
-            intel_blocks.append(_format_intel_brief_for_llm(intel_d))
-        except Exception:
-            pass
+    # ── STAGE 2: PARALLEL RAG & QUANTITATIVE TOOL EXECUTOR ──
+    rag_blocks, quant_blocks, rag_trace = _execute_rag_and_quant_tools(plan, question)
 
+    # ── STAGE 3: DEEP REASONER, CRITIC & SYNTHESIZER ──
     mode_instructions = {
         "analyst": (
-            "MODE: ⚡ INSTITUTIONAL QUANTAMENTAL ANALYST (Balanced & Rigorous).\n"
-            "Synthesize both the 1–8 week Quantitative/Technical signals (Trend, Momentum, Volume POC, Monte Carlo, 7-Strategy Backtest + Walk-Forward Meta-Boss) "
-            "and the 12-month Fundamental/Wall Street signals (Analyst Price Targets, Earnings Beat/Miss streak, Revenue/Margin growth, CapEx vs. Free Cash Flow, News). "
-            "Whenever Technicals and Wall Street Analysts disagree, explicitly explain the time-horizon conflict (short-term Falling Knife protection vs. 12-month DCF valuation discount) and give the exact price trigger to resolve it."
+            "PERSONA MODE: ⚡ INSTITUTIONAL QUANTAMENTAL ANALYST (Deep Multi-Horizon Synthesis).\n"
+            "Test all 3 Planner Hypotheses (`H1`, `H2`, `H3`) against the Citation-Indexed RAG & Quantitative Tool Evidence below. "
+            "Synthesize the 1–8 week Quantitative/Technical signals (Trend, Momentum, Volume POC, Monte Carlo, 7-Strategy Backtest + Walk-Forward Meta-Boss) "
+            "and the 12–24 month Fundamental/Wall Street signals (Analyst Price Targets, 4Q Earnings Beat/Miss streak, 30D Revisions, 5Q Revenue/Margin/FCF vs. CapEx, 13F Holdings, News). "
+            "Whenever Technicals and Wall Street Analysts disagree, explicitly explain the time-horizon conflict and give the exact price trigger to resolve it."
         ),
         "eli5": (
-            "MODE: 👶 EXPLAIN LIKE I'M 5 (Plain English & Vivid Analogies).\n"
-            "Explain the financial, technical, and quantitative concepts using simple, memorable everyday analogies (like weather radar vs. house appraisal, stretched rubber bands, bowling bumpers, or a lemonade stand's cash register). "
-            "Still include the key real numbers in parentheses so the user learns what they mean, and finish with a bold 'Bottom Line in 1 Sentence'."
+            "PERSONA MODE: 👶 EXPLAIN LIKE I'M 5 (Plain English & Vivid Everyday Analogies).\n"
+            "Explain the Planner's findings, technical setup, Monte Carlo odds, and fundamental valuation using simple, memorable analogies (like weather radar vs. house appraisal, stretched rubber bands, bowling bumpers, or a lemonade stand's cash register). "
+            "Still include the real numbers in parentheses so the user learns what they mean, and finish with a bold 'Bottom Line in 1 Sentence'."
         ),
         "debate": (
-            "MODE: ⚔️ BULL VS. BEAR INSTITUTIONAL DEBATE.\n"
-            "Structure your response into three crisp sections:\n"
-            "1. ### 🟢 The Bull Case (3 Strongest Data-Backed Arguments)\n"
-            "2. ### 🔴 The Bear Case (3 Strongest Data-Backed Risks)\n"
-            "3. ### ⚖️ Portfolio Manager's Verdict & Exact Trigger Levels (Who wins right now and what exact price level flips the script)."
+            "PERSONA MODE: ⚔️ BULL VS. BEAR INSTITUTIONAL COMMITTEE DEBATE.\n"
+            "Structure your response into three rigorous sections:\n"
+            "1. ### 🟢 The Bull Case (3 Strongest RAG & Quant Data-Backed Arguments)\n"
+            "2. ### 🔴 The Bear Case (3 Strongest RAG & Quant Data-Backed Risks)\n"
+            "3. ### ⚖️ Portfolio Manager's Verdict & Exact Trigger Levels (Who wins right now across 1–8W vs. 12M horizons and what exact price level flips the script)."
         ),
         "devil": (
-            "MODE: 🦈 DEVIL'S ADVOCATE & CHIEF RISK OFFICER AUDIT.\n"
+            "PERSONA MODE: 🦈 DEVIL'S ADVOCATE & CHIEF RISK OFFICER PRE-MORTEM AUDIT.\n"
             "Your job is to protect the user's capital by ruthlessly stress-testing their thesis on this stock. "
-            "Expose hidden traps in the data (such as overhead Volume POC supply, negative Free Cash Flow from heavy CapEx, upcoming binary earnings gap risk, negative Sharpe/Sortino, or shorting in the hole below Wall Street's bear target). "
+            "Expose hidden traps across the RAG & Quant telemetry (overhead Volume POC supply, negative Free Cash Flow from surging CapEx, upcoming binary earnings gap risk, Form 4 insider selling, negative Sharpe/Sortino, or shorting in the hole below Wall Street's bear target). "
             "Give specific downside levels (Stop-Loss, Bear Tail P5, CVaR) and position-sizing guardrails."
         ),
     }
@@ -2473,21 +3024,39 @@ def handle_ai_chat(payload: dict) -> dict:
             hist_lines.append(f"{r_lbl}: {txt}")
     hist_block = "\n".join(hist_lines) if hist_lines else "(Start of conversation)"
 
-    system_prompt = f"""You are StockSage Quant Pro Copilot (powered by Gemini Flash), an elite institutional quantitative & fundamental ("Quantamental") equity research partner.
+    skills_summary = "\n".join(
+        f"• [{sk_id}] {PLANNER_SKILLS_REGISTRY.get(sk_id, {}).get('name', sk_id)}: {PLANNER_SKILLS_REGISTRY.get(sk_id, {}).get('description', '')}"
+        for sk_id in plan.get("skills_invoked", [])
+    )
+    ui_cmds_summary = "\n".join(
+        f"• {c.get('cmd')}: {c.get('reason', json.dumps(c))}"
+        for c in plan.get("ui_commands", [])
+    ) or "• None (Maintaining current view)"
+
+    reasoner_prompt = f"""{REASONER_SI}
 
 {selected_mode_prompt}
 
-FORMATTING & GROUNDING RULES:
-1. Ground every claim in the live telemetry & fundamental intelligence provided below. Cite exact prices, percentages, ratios, and strategy names in **bold** or `code` spans.
-2. Keep your response structured, high-signal, and easy to scan (use `###` subheadings, bullet points, and Markdown tables `| Metric | Value | Takeaway |` when comparing numbers).
-3. At the very end of your response, on a new final line, ALWAYS output exactly 3 short, insightful follow-up questions the user can click next, formatted strictly as:
-FOLLOW_UPS: Question 1? | Question 2? | Question 3?
+=== STAGE 1 STRATEGIC PLANNER BRIEFING ===
+• Thought Summary: {plan.get("thought_summary")}
+• Target Symbols: {", ".join(plan.get("target_symbols", []))} (Market: {plan.get("target_market")})
+• Falsifiable Hypotheses to Test:
+  1. {plan["hypotheses"][0]}
+  2. {plan["hypotheses"][1]}
+  3. {plan["hypotheses"][2]}
+• Attached Skills Invoked:
+{skills_summary}
+• UI Page-Driver Commands Already Dispatched to User's Screen:
+{ui_cmds_summary}
 
-=== CLIENT-SIDE LIVE QUANT & TECHNICAL TELEMETRY ===
+=== STAGE 2 RETRIEVED SERVER QUANTITATIVE TOOL OUTPUTS ===
+{chr(10).join(quant_blocks) if quant_blocks else "(Using client telemetry below)"}
+
+=== STAGE 2 CITATION-INDEXED 17-MODULE SERVER RAG CORPUS ===
+{chr(10).join(rag_blocks)}
+
+=== CLIENT-SIDE LIVE CHART, MONTE CARLO & 7-STRATEGY BACKTEST TELEMETRY ===
 {client_telemetry}
-
-=== SERVER-SIDE LIVE FUNDAMENTALS, EARNINGS, CASH FLOW & NEWS ===
-{chr(10).join(intel_blocks)}
 
 === RECENT CONVERSATION HISTORY ===
 {hist_block}
@@ -2495,91 +3064,55 @@ FOLLOW_UPS: Question 1? | Question 2? | Question 3?
 === USER QUESTION ===
 {question}"""
 
-    gen_body = {
-        "contents": [{"role": "user", "parts": [{"text": system_prompt}]}],
-        "generationConfig": {
-            "temperature": 0.25,
-            "maxOutputTokens": 1400,
-        },
-    }
-    body_bytes = json.dumps(gen_body).encode("utf-8")
-
-    models_order = []
-    for m in (preferred_model, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"):
-        if m and m not in models_order:
-            models_order.append(m)
-
-    raw_reply = None
-    used_model = None
-    used_provider = None
-
-    # 1. Try Gemini Developer API if an API key is provided
-    if user_api_key:
-        for m in models_order:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(m)}:generateContent?key={urllib.parse.quote(user_api_key)}"
-                req = urllib.request.Request(url, data=body_bytes, headers={"Content-Type": "application/json"}, method="POST")
-                with urllib.request.urlopen(req, timeout=18) as r:
-                    resp_d = json.loads(r.read().decode("utf-8"))
-                txt = (((resp_d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [{}])[0].get("text")
-                if txt and txt.strip():
-                    raw_reply = txt.strip()
-                    used_model = m
-                    used_provider = "Gemini API"
-                    break
-            except Exception:
-                continue
-
-    # 2. Try Google Cloud Vertex AI (Zero-Key Cloud Run Service Account Authentication)
-    if not raw_reply:
-        gcp_token, gcp_proj = _get_gcp_vertex_auth()
-        if gcp_token and gcp_proj:
-            for loc in ("us-central1", "asia-south1", "global"):
-                if raw_reply:
-                    break
-                host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
-                for m in models_order:
-                    try:
-                        url = (
-                            f"https://{host}/v1/projects/{urllib.parse.quote(gcp_proj)}"
-                            f"/locations/{loc}/publishers/google/models/{urllib.parse.quote(m)}:generateContent"
-                        )
-                        req = urllib.request.Request(
-                            url,
-                            data=body_bytes,
-                            headers={
-                                "Authorization": f"Bearer {gcp_token}",
-                                "Content-Type": "application/json",
-                            },
-                            method="POST",
-                        )
-                        with urllib.request.urlopen(req, timeout=18) as r:
-                            resp_d = json.loads(r.read().decode("utf-8"))
-                        txt = (((resp_d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [{}])[0].get("text")
-                        if txt and txt.strip():
-                            raw_reply = txt.strip()
-                            used_model = m
-                            used_provider = f"Vertex AI ({loc})"
-                            break
-                    except Exception:
-                        continue
+    raw_reply, used_model, used_provider = _call_gemini_llm(
+        reasoner_prompt,
+        user_api_key=user_api_key,
+        preferred_model=preferred_model,
+        max_tokens=4096,
+        temperature=0.2,
+        timeout_sec=35,
+    )
 
     if not raw_reply:
-        return {"ok": False, "error": "Gemini Flash not reachable (enable Vertex AI aiplatform.googleapis.com on Cloud Run or add a free Gemini API key in ⚙️ Settings)."}
+        return {
+            "ok": False,
+            "plan": plan,
+            "rag_trace": rag_trace,
+            "ui_commands": plan.get("ui_commands", []),
+            "error": "Gemini Planner/Reasoner not reachable (enable Vertex AI aiplatform.googleapis.com on Cloud Run or add a Gemini API key in ⚙️ Settings).",
+        }
 
     follow_ups = []
+    extra_ui_cmds = []
     clean_lines = []
     for line in raw_reply.splitlines():
-        if line.strip().upper().startswith("FOLLOW_UPS:"):
-            raw_f = line.split(":", 1)[1]
+        s_line = line.strip()
+        if s_line.upper().startswith("FOLLOW_UPS:"):
+            raw_f = s_line.split(":", 1)[1]
             follow_ups = [q.strip().strip("*`-• ") for q in raw_f.split("|") if q.strip()][:3]
+        elif s_line.upper().startswith("UI_COMMANDS_JSON:"):
+            raw_j = s_line.split(":", 1)[1].strip()
+            try:
+                parsed_cmds = json.loads(raw_j)
+                if isinstance(parsed_cmds, list):
+                    extra_ui_cmds.extend(parsed_cmds)
+            except Exception:
+                pass
         else:
             clean_lines.append(line)
+
+    merged_ui_cmds = list(plan.get("ui_commands", []))
+    for cmd_obj in extra_ui_cmds:
+        if isinstance(cmd_obj, dict) and cmd_obj.get("cmd") and cmd_obj not in merged_ui_cmds:
+            merged_ui_cmds.append(cmd_obj)
 
     return {
         "ok": True,
         "model": used_model,
         "provider": used_provider,
+        "plan": plan,
+        "rag_trace": rag_trace,
+        "ui_commands": merged_ui_cmds,
         "markdown": "\n".join(clean_lines).strip(),
         "follow_ups": follow_ups,
     }
