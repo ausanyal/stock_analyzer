@@ -1653,16 +1653,23 @@ function generateCalibratedChart(sym, range, interval) {
   }
 
   const nowDay = Math.floor(Date.now() / 86400000) * 86400;
-  const timestamps = [], open = [], high = [], low = [], close = [], volume = [];
-  let curTime = nowDay - nBars * stepSec;
+  const tsRev = [];
+  let curTime = nowDay;
+  for (let i = 0; i < nBars; i++) {
+    if (interval === '1d') {
+      while (true) {
+        const dow = new Date(curTime * 1000).getUTCDay();
+        if (dow !== 0 && dow !== 6) break;
+        curTime -= 86400;
+      }
+    }
+    tsRev.push(curTime);
+    curTime -= stepSec;
+  }
+  const timestamps = tsRev.reverse();
+  const open = [], high = [], low = [], close = [], volume = [];
 
   for (let i = 0; i < nBars; i++) {
-    curTime += stepSec;
-    if (interval === '1d') {
-      const dow = new Date(curTime * 1000).getUTCDay();
-      if (dow === 0) curTime += 86400;
-      else if (dow === 6) curTime += 2 * 86400;
-    }
     const c = closes[i];
     const prevC = i > 0 ? closes[i - 1] : c * (1 - 0.003);
     const gap = (nextRand() - 0.49) * sig * 0.35;
@@ -1671,7 +1678,6 @@ function generateCalibratedChart(sym, range, interval) {
     const h = Math.max(o, c) * (1 + intra * 0.65);
     const l = Math.min(o, c) * (1 - intra * 0.65);
     const v = Math.round((28000000 + nextRand() * 42000000) * (1 + Math.abs(c - o) / c * 18));
-    timestamps.push(curTime);
     open.push(o); high.push(h); low.push(l); close.push(c); volume.push(v);
   }
 

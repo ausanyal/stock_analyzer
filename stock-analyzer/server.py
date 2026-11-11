@@ -175,6 +175,48 @@ def fetch_cnbc_quote(sym: str) -> dict:
         return {"symbol": key, "longName": key, "shortName": key}
 
 
+def _fetch_yahoo_v8_bars(y_sym: str, rng: str) -> list:
+    y_rng = rng if rng in ("1mo", "3mo", "6mo", "1y", "2y", "5y") else "1y"
+    for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+        try:
+            url = (
+                f"https://{host}/v8/finance/chart/{urllib.parse.quote(y_sym)}"
+                f"?range={y_rng}&interval=1d&includePrePost=false&events=div%2Csplit"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": HEADERS["User-Agent"], "Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=6) as r:
+                d = json.loads(r.read().decode("utf-8"))
+            res = ((d.get("chart") or {}).get("result") or [None])[0]
+            if not res:
+                continue
+            ts_list = res.get("timestamp") or []
+            q = ((res.get("indicators") or {}).get("quote") or [{}])[0]
+            o_arr = q.get("open") or []
+            h_arr = q.get("high") or []
+            l_arr = q.get("low") or []
+            c_arr = q.get("close") or []
+            v_arr = q.get("volume") or []
+            by_day = {}
+            for i, raw_ts in enumerate(ts_list):
+                if i >= len(c_arr):
+                    break
+                o = parse_num(o_arr[i] if i < len(o_arr) else None)
+                h = parse_num(h_arr[i] if i < len(h_arr) else None)
+                l = parse_num(l_arr[i] if i < len(l_arr) else None)
+                c = parse_num(c_arr[i])
+                v = parse_num(v_arr[i] if i < len(v_arr) else 0.0) or 0.0
+                if None in (o, h, l, c):
+                    continue
+                dt_utc = datetime.datetime.fromtimestamp(int(raw_ts), datetime.timezone.utc)
+                day_ts = int(datetime.datetime(dt_utc.year, dt_utc.month, dt_utc.day, tzinfo=datetime.timezone.utc).timestamp())
+                by_day[day_ts] = {"time": day_ts, "open": o, "high": h, "low": l, "close": c, "volume": v}
+            if by_day:
+                return [by_day[k] for k in sorted(by_day.keys())]
+        except Exception:
+            continue
+    return []
+
+
 def fetch_nasdaq_bars(sym: str, rng: str) -> list:
     key = (sym.upper().strip(), rng)
     now = time.time()
@@ -183,6 +225,14 @@ def fetch_nasdaq_bars(sym: str, rng: str) -> list:
         if cached and (now - cached["ts"] < 180.0):
             return [dict(b) for b in cached["bars"]]
 
+    # 1. Primary Cloud-Safe Feed: Yahoo Finance v8 Chart API (works on both Cloud Run datacenter IPs and local)
+    y_bars = _fetch_yahoo_v8_bars(sym.upper().strip(), rng)
+    if y_bars:
+        with _CACHE_LOCK:
+            _BARS_CACHE[key] = {"ts": now, "bars": y_bars}
+        return [dict(b) for b in y_bars]
+
+    # 2. Fallback: Official Nasdaq Historical API
     days_map = {"1mo": 35, "3mo": 95, "6mo": 185, "1y": 366, "2y": 732, "5y": 1825}
     days = days_map.get(rng, 366)
     to_dt = datetime.date.today() + datetime.timedelta(days=1)
@@ -195,7 +245,7 @@ def fetch_nasdaq_bars(sym: str, rng: str) -> list:
                 f"?assetclass={asset_class}&fromdate={from_dt.isoformat()}&limit=1500&todate={to_dt.isoformat()}"
             )
             req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=5) as r:
                 d = json.loads(r.read().decode("utf-8"))
             rows = (d.get("data") or {}).get("tradesTable", {}).get("rows") or []
             if not rows:
@@ -444,6 +494,14 @@ def fetch_india_bars(sym: str, rng: str) -> list:
             return [dict(b) for b in bars]
     except Exception:
         pass
+
+    # 3. Cloud-Safe Fallback: Yahoo Finance v8 Chart API (.NS / ^NSEI)
+    y_india_sym = "^NSEI" if norm_sym == "NIFTY50" else ("^BSESN" if norm_sym == "SENSEX" else f"{norm_sym}.NS")
+    y_bars = _fetch_yahoo_v8_bars(y_india_sym, rng)
+    if y_bars:
+        with _CACHE_LOCK:
+            _BARS_CACHE[cache_key] = {"ts": now, "bars": y_bars}
+        return [dict(b) for b in y_bars]
 
     return []
 
