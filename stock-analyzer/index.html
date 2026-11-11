@@ -1232,9 +1232,10 @@
 
           <div class="thesis-box" id="thesis">Loading quantitative thesis…</div>
 
-          <div class="ai-run-row">
-            <input type="password" class="key-input" id="inlineKey" placeholder="Optional: Enter Gemini API Key to enhance with LLM Deep Research" autocomplete="off">
-            <button class="btn btn-purple" id="aiRunBtn">✨ Enhance Proposal with Gemini AI</button>
+          <div class="ai-run-row" style="justify-content:flex-start;flex-wrap:wrap;gap:8px">
+            <button class="btn btn-purple" onclick="launchProposalCopilotAudit('analyst')">🧠 Deep-Dive &amp; Stress-Test Proposal in Quant Copilot ›</button>
+            <button class="btn btn-ghost" onclick="launchProposalCopilotAudit('debate')">⚔️ Run Bull vs. Bear Debate</button>
+            <button class="btn btn-ghost" onclick="launchProposalCopilotAudit('devil')">🦈 Devil's Advocate Pre-Mortem</button>
           </div>
           <div class="disclaimer">⚠️ <strong>Quantitative &amp; Educational Disclaimer:</strong> Signals, backtests, Monte Carlo projections, and AI theses are strictly mathematical models for research only and do not constitute investment advice. Past performance does not guarantee future results.</div>
         </div>
@@ -3579,142 +3580,22 @@ function renderMicrostructureUI() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-//  GEMINI AI ENHANCEMENT (WITH MODEL FALLBACK)
+//  PROPOSAL → QUANT COPILOT DEEP-DIVE LAUNCHER
 // ════════════════════════════════════════════════════════════════════════
-async function runAI() {
+function launchProposalCopilotAudit(mode = 'analyst') {
   if (!S.candles.length) return;
-  const key = document.getElementById('inlineKey').value.trim() || S.gemKey || '';
-  if (key) {
-    S.gemKey = key;
-    localStorage.setItem('ss_key', key);
-  }
-  const btn = document.getElementById('aiRunBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Synthesizing Deep Quant + Gemini 2.5 Flash Research…';
+  const sym = S.ticker || 'NVDA';
+  const sig = S.proposal?.signal || 'HOLD';
+  const sc = S.proposal?.score ?? '—';
+  setChatPersona(mode);
+  toggleChatDrawer(true);
 
-  try {
-    const { ticker, candles, quant, mcResult, btResults, proposal, computed } = S;
-    const last = candles[candles.length - 1];
-    const vp = computed.vp;
-    const bestBt = [...btResults.filter(b => !b.isBenchmark)].sort((a, b) => b.sharpe - a.sharpe)[0] || btResults[0];
-
-    const prompt = `You are a Managing Director of Quantitative Strategy & Equity Research at an elite institutional fund.
-Synthesize the following verified quantitative telemetry for ${ticker} and return ONLY a raw valid JSON object (no markdown fences).
-
-## TELEMETRY FOR ${ticker} (Spot: ${f$(last.close)})
-- Composite Quant Score: ${proposal.score}/100 (Algorithmic Baseline Verdict: ${proposal.signal})
-- Regime & Hurst Exponent: H = ${quant.hurst.toFixed(2)} (${quant.regime})
-- Risk-Adjusted Metrics: Sharpe = ${quant.sharpe.toFixed(2)}, Sortino = ${quant.sortino.toFixed(2)}, Calmar = ${quant.calmar.toFixed(2)}, Max Drawdown = ${fpct(quant.maxDD * 100, 1)}
-- CAPM vs SPY: Beta = ${quant.beta?.toFixed(2) ?? 'N/A'}, Annualized Alpha = ${quant.alphaAnn != null ? fpct(quant.alphaAnn * 100, 1) : 'N/A'}, R² = ${quant.r2 != null ? (quant.r2 * 100).toFixed(0) + '%' : 'N/A'}
-- Tail Risk: Daily VaR(95%) = ${fpct(quant.var95 * 100, 2)}, CVaR(95%) = ${fpct(quant.cvar95 * 100, 2)}, Ann. Volatility = ${(quant.annVol * 100).toFixed(1)}%
-- Volume Profile: POC = ${f$(vp.poc)}, Value Area Low = ${f$(vp.val)}, Value Area High = ${f$(vp.vah)}
-- Monte Carlo (${mcResult.nDays}d, ${mcResult.model}): Win Odds = ${mcResult.stats.probUp.toFixed(1)}%, P5 = ${f$(mcResult.stats.p5)}, Median = ${f$(mcResult.stats.med)}, P95 = ${f$(mcResult.stats.p95)}
-- Top Backtested Strategy (quants.md): ${bestBt.name} (Live Signal: ${bestBt.liveSignal}, Sharpe: ${bestBt.sharpe.toFixed(2)}, Net Return: ${fpct(bestBt.totalRet * 100, 1)}, Win Rate: ${bestBt.winRate.toFixed(0)}%)
-- Algorithmic Levels: Entry ${f$(proposal.entryLow)}–${f$(proposal.entryHigh)}, Stop ${f$(proposal.stopLoss)}, TP1 ${f$(proposal.tp1)}, TP2 ${f$(proposal.tp2)}, TP3 ${f$(proposal.tp3)}
-
-Return ONLY this JSON object:
-{
-  "signal": "STRONG BUY" | "BUY" | "HOLD" | "SELL" | "STRONG SELL",
-  "conviction": "High" | "Medium-High" | "Medium" | "Low",
-  "entryLow": <number>,
-  "entryHigh": <number>,
-  "stopLoss": <number>,
-  "tp1": <number>,
-  "tp2": <number>,
-  "tp3": <number>,
-  "horizon": "<recommended holding period>",
-  "catalysts": ["<point 1>", "<point 2>", "<point 3>", "<point 4>"],
-  "risks": ["<risk 1>", "<risk 2>", "<risk 3>", "<risk 4>"],
-  "thesis": "<4-paragraph institutional investment proposal covering: 1) Regime & Multi-Factor Thesis, 2) Backtest & Stochastic Simulation Evidence, 3) Microstructure, Volume Profile & Exact Entry Execution, 4) Stop-Loss, Profit-Taking Ladder & Holding Period Rationale>"
-}`;
-
-    const modelsToTry = [S.gemModel, 'gemini-2.5-flash', 'gemini-2.0-flash'];
-    let aiData = null, lastErr = null;
-    const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
-
-    // 1. Try server-side Vertex AI / Gemini endpoint first (works on Cloud Run without an API key)
-    try {
-      const sr = await fetch(`${apiBase}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: prompt,
-          symbol: ticker,
-          market: S.market,
-          mode: 'analyst',
-          telemetry: buildLiveDossierForLLM(),
-          api_key: key,
-          model: S.gemModel || 'gemini-2.5-flash',
-        }),
-        signal: AbortSignal.timeout(22000),
-      });
-      if (sr.ok) {
-        const sd = await sr.json();
-        const match = (sd.markdown || '').match(/\{[\s\S]*\}/);
-        if (match) aiData = JSON.parse(match[0]);
-      }
-    } catch {}
-
-    // 2. Fallback to direct browser API call if user entered a key
-    if (!aiData && key) {
-      for (const m of [...new Set(modelsToTry)]) {
-        try {
-          const resp = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.15 },
-              }),
-            }
-          );
-          if (!resp.ok) {
-            const e = await resp.json().catch(() => ({}));
-            throw new Error(e.error?.message || `HTTP ${resp.status}`);
-          }
-          const d = await resp.json();
-          const raw = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          const match = raw.match(/\{[\s\S]*\}/);
-          if (!match) throw new Error('Invalid JSON response from model');
-          aiData = JSON.parse(match[0]);
-          break;
-        } catch (err) {
-          lastErr = err;
-        }
-      }
-    }
-    if (!aiData) {
-      if (!key) document.getElementById('settingsModal').classList.remove('hidden');
-      throw lastErr || new Error('Enable Vertex AI (aiplatform.googleapis.com) on Cloud Run or enter a free Gemini API key in Settings.');
-    }
-
-    // Merge AI refinements into proposal
-    const merged = {
-      ...proposal,
-      signal: aiData.signal || proposal.signal,
-      conviction: aiData.conviction || proposal.conviction,
-      vClass: (aiData.signal || '').includes('BUY') ? 'buy' : (aiData.signal || '').includes('SELL') ? 'sell' : 'hold',
-      entryLow: Number(aiData.entryLow) || proposal.entryLow,
-      entryHigh: Number(aiData.entryHigh) || proposal.entryHigh,
-      stopLoss: Number(aiData.stopLoss) || proposal.stopLoss,
-      tp1: Number(aiData.tp1) || proposal.tp1,
-      tp2: Number(aiData.tp2) || proposal.tp2,
-      tp3: Number(aiData.tp3) || proposal.tp3,
-      horizon: aiData.horizon || proposal.horizon,
-      catalysts: Array.isArray(aiData.catalysts) && aiData.catalysts.length ? aiData.catalysts : proposal.catalysts,
-      risks: Array.isArray(aiData.risks) && aiData.risks.length ? aiData.risks : proposal.risks,
-      thesis: aiData.thesis || proposal.thesis,
-    };
-    S.proposal = merged;
-    renderProposal(merged);
-    updateChartPriceLines(merged);
-  } catch (err) {
-    alert('Gemini AI error: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '✨ Enhance Proposal with Gemini AI';
+  if (mode === 'debate') {
+    sendChatMessage(`Run an institutional Bull vs. Bear committee debate on ${sym} (${sig}, ${sc}/100) across its 1–8W technical regime, 7-strategy backtest, 12M Wall Street price targets, earnings revisions, and quarterly cash flow.`);
+  } else if (mode === 'devil') {
+    sendChatMessage(`Play Devil's Advocate on ${sym}'s ${sig} (${sc}/100) Trade Proposal: expose the biggest hidden traps across Volume POC, CapEx vs. Free Cash Flow, binary earnings risk, and Merton Jump-Diffusion tail risk.`);
+  } else {
+    sendChatMessage(`Plot ${sym}'s Wall Street price targets on the chart and run a deep institutional audit of ${sym}'s ${sig} (${sc}/100) Trade Proposal across Technicals, 17-Module RAG Fundamentals, Cash Flow, and Monte Carlo odds.`);
   }
 }
 
@@ -6402,9 +6283,10 @@ function renderPlannerTraceHtml(plan, ragTrace, executedSteps) {
 
 async function callGeminiChatWithTelemetry(question) {
   if (!S.candles?.length) return null;
-  const key = S.gemKey || document.getElementById('inlineKey')?.value?.trim() || '';
+  const key = S.gemKey || '';
   const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
   const telemetry = buildLiveDossierForLLM();
+  let serverFallbackTrace = '';
 
   // 1. Primary: Call Server-Side 3-Stage Deliberative Planner -> Parallel RAG & Tool Executor -> Deep Reasoner (/api/chat)
   try {
@@ -6421,13 +6303,13 @@ async function callGeminiChatWithTelemetry(question) {
         api_key: key,
         model: S.gemModel || 'gemini-2.5-pro',
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(90000),
     });
     if (r.ok) {
       const d = await r.json();
       const executedSteps = await executePageDriverCommands(d?.ui_commands || []);
+      const traceHtml = renderPlannerTraceHtml(d?.plan, d?.rag_trace, executedSteps);
       if (d && d.ok && d.markdown) {
-        const traceHtml = renderPlannerTraceHtml(d.plan, d.rag_trace, executedSteps);
         return {
           html: traceHtml + renderSimpleMarkdown(d.markdown),
           followUps: d.follow_ups || [],
@@ -6435,11 +6317,14 @@ async function callGeminiChatWithTelemetry(question) {
           executedSteps,
         };
       }
+      if (traceHtml || d?.error) {
+        serverFallbackTrace = `${traceHtml}${d?.error ? `<div style="font-size:10.5px;color:var(--yellow);margin-bottom:6px">ℹ️ <em>LLM Note: ${d.error} Showing deterministic multi-factor synthesis below:</em></div>` : ''}`;
+      }
     }
   } catch {}
 
   // 2. Fallback: Direct Browser Call if User Provided an API Key in Settings
-  if (!key) return null;
+  if (!key) return serverFallbackTrace ? { fallbackPrefixHtml: serverFallbackTrace } : null;
   const historyText = S.chatHistory.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
   const fullPrompt = `You are the StockSage Quant Pro Deliberative Planner & Reasoner (${S.chatPersona || 'analyst'} mode). Answer using the live telemetry below and end with FOLLOW_UPS: Q1? | Q2? | Q3?\n\n${telemetry}\n\nRECENT CONVERSATION:\n${historyText}\n\nUSER QUESTION: ${question}`;
 
@@ -6532,7 +6417,7 @@ async function sendChatMessage(customPrompt) {
       const followUpActions = (aiRes.followUps || []).map(fq => ({ label: `💬 ${fq}`, prompt: fq }));
       finalActions = [...followUpActions, ...(det?.actions || []).slice(0, 2)];
     } else {
-      finalHtml = det.html;
+      finalHtml = (aiRes?.fallbackPrefixHtml || '') + det.html;
       finalActions = det.actions || [];
       finalMeta = `Quant Copilot · ⚡ Multi-Factor Reasoning Engine`;
     }
@@ -6664,12 +6549,9 @@ document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('ss_key', S.gemKey);
     localStorage.setItem('ss_model', S.gemModel);
     localStorage.setItem('ss_rf', String(S.rfRate));
-    if (S.gemKey) document.getElementById('inlineKey').value = S.gemKey;
     document.getElementById('settingsModal').classList.add('hidden');
     if (S.candles.length) analyze();
   });
-
-  document.getElementById('aiRunBtn').addEventListener('click', runAI);
 
   // Quant Copilot Chatbot controls
   document.querySelectorAll('#chatPersonaBar .persona-btn').forEach(btn => {
@@ -6718,8 +6600,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (S.mcResult && S.candles.length) drawMC(document.getElementById('mcCanvas'), S.mcResult, S.candles);
     if (S.btResults.length) drawBacktestCanvas(document.getElementById('btCanvas'), S.btResults);
   });
-
-  if (S.gemKey) document.getElementById('inlineKey').value = S.gemKey;
 
   // Default load (supports ?market=IN|US&ticker=SYM&section=weeklyPanel|mcPanel|btPanel&chat=1&ask=...)
   const qsParams = new URLSearchParams(window.location.search);

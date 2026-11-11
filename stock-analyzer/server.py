@@ -2530,12 +2530,11 @@ def _call_gemini_llm(
     preferred_model: str = "gemini-2.5-pro",
     max_tokens: int = 4096,
     temperature: float = 0.2,
-    timeout_sec: int = 35,
+    timeout_sec: int = 55,
 ) -> tuple:
     """Calls Gemini (prioritizing gemini-2.5-pro for maximum reasoning quality, falling back to gemini-2.5-flash) via Developer API or Cloud Run Vertex AI."""
     models_order = []
-    # Prioritize gemini-2.5-pro when quality is paramount, while respecting user choice and ensuring resilient fallback
-    for m in (preferred_model, "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"):
+    for m in (preferred_model, "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash"):
         if m and m not in models_order:
             models_order.append(m)
 
@@ -2555,6 +2554,8 @@ def _call_gemini_llm(
             texts = [p.get("text", "") for p in parts if p.get("text")]
         return "\n".join(texts).strip()
 
+    last_diag = ""
+
     # 1. Try Gemini Developer API if an API key is provided
     if user_api_key:
         for m in models_order:
@@ -2565,14 +2566,23 @@ def _call_gemini_llm(
                     resp_d = json.loads(r.read().decode("utf-8"))
                 txt = _extract_candidate_text(resp_d)
                 if txt:
-                    return txt, m, "Gemini API"
-            except Exception:
+                    return txt, m, "Gemini API", ""
+            except urllib.error.HTTPError as he:
+                err_b = he.read().decode("utf-8", errors="ignore")[:240]
+                last_diag = f"Gemini API HTTP {he.code}: {err_b}"
+                if he.code in (400, 401, 403) and "API_KEY_INVALID" in err_b:
+                    break
+            except Exception as e:
+                last_diag = f"Gemini API error: {e}"
                 continue
 
     # 2. Try Google Cloud Vertex AI (Zero-Key Cloud Run Service Account Authentication)
     gcp_token, gcp_proj = _get_gcp_vertex_auth()
     if gcp_token and gcp_proj:
-        for loc in ("us-central1", "global", "asia-south1"):
+        api_disabled_abort = False
+        for loc in ("global", "us-central1", "asia-south1"):
+            if api_disabled_abort:
+                break
             host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
             for m in models_order:
                 try:
@@ -2593,11 +2603,26 @@ def _call_gemini_llm(
                         resp_d = json.loads(r.read().decode("utf-8"))
                     txt = _extract_candidate_text(resp_d)
                     if txt:
-                        return txt, m, f"Vertex AI ({loc})"
-                except Exception:
+                        return txt, m, f"Vertex AI ({loc})", ""
+                except urllib.error.HTTPError as he:
+                    err_b = he.read().decode("utf-8", errors="ignore")
+                    if "SERVICE_DISABLED" in err_b or "has not been used in project" in err_b:
+                        last_diag = f"Vertex AI API (aiplatform.googleapis.com) is not enabled yet on project {gcp_proj}."
+                        api_disabled_abort = True
+                        break
+                    if he.code == 403 and "PERMISSION_DENIED" in err_b:
+                        last_diag = f"Cloud Run service account needs roles/aiplatform.user on project {gcp_proj}."
+                        api_disabled_abort = True
+                        break
+                    last_diag = f"Vertex AI ({loc}/{m}) HTTP {he.code}"
+                except Exception as e:
+                    last_diag = f"Vertex AI ({loc}/{m}) {e}"
                     continue
+    else:
+        if not last_diag:
+            last_diag = "No Cloud Run service account token or Gemini API key configured."
 
-    return None, None, None
+    return None, None, None, last_diag
 
 
 def _build_planner_execution_plan(question: str, active_sym: str, active_market: str) -> dict:
@@ -3064,13 +3089,13 @@ def handle_ai_chat(payload: dict) -> dict:
 === USER QUESTION ===
 {question}"""
 
-    raw_reply, used_model, used_provider = _call_gemini_llm(
+    raw_reply, used_model, used_provider, err_diag = _call_gemini_llm(
         reasoner_prompt,
         user_api_key=user_api_key,
         preferred_model=preferred_model,
         max_tokens=4096,
         temperature=0.2,
-        timeout_sec=35,
+        timeout_sec=55,
     )
 
     if not raw_reply:
@@ -3079,7 +3104,7 @@ def handle_ai_chat(payload: dict) -> dict:
             "plan": plan,
             "rag_trace": rag_trace,
             "ui_commands": plan.get("ui_commands", []),
-            "error": "Gemini Planner/Reasoner not reachable (enable Vertex AI aiplatform.googleapis.com on Cloud Run or add a Gemini API key in ⚙️ Settings).",
+            "error": err_diag or "Gemini Planner/Reasoner not reachable (enable Vertex AI aiplatform.googleapis.com on Cloud Run or add a Gemini API key in ⚙️ Settings).",
         }
 
     follow_ups = []
