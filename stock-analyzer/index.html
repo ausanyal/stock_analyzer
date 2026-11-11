@@ -558,6 +558,7 @@
       gap: 12px;
       flex-wrap: wrap;
       font-size: 11.5px;
+      flex-shrink: 0;
     }
     .gf-outlook-left {
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
@@ -1110,38 +1111,38 @@
 
   <!-- CHART & RESEARCH AREA -->
   <div class="chart-area">
-    <!-- GOOGLE FINANCE-STYLE COMPOSITE OUTLOOK & EXTENDED QUOTE BANNER -->
-    <div class="gf-outlook-bar" id="gfOutlookBar">
-      <div class="gf-outlook-left">
-        <div class="gf-outlook-pill" id="gfOutlookPill">
-          <span>📈 Outlook:</span>
-          <span id="gfOutlookTxt" style="color:var(--muted)">Synthesizing analyst, wire &amp; quant outlook…</span>
-          <div class="gf-mini-meter" id="gfOutlookMeter">
-            <div style="width:50%;background:var(--green)"></div>
-            <div style="width:30%;background:var(--muted)"></div>
-            <div style="width:20%;background:var(--red)"></div>
-          </div>
-        </div>
-        <div class="gf-meta-pills" id="gfMetaPills"></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <button class="gf-goto-btn" onclick="jumpToIntelTab('analysis')">Go to Analysis ›</button>
-        <button class="gf-goto-btn" onclick="jumpToIntelTab('news')">Live Wire ›</button>
-      </div>
-    </div>
-
-    <div class="chart-toolbar">
-      <span class="t-hdr">OVERLAYS:</span>
-      <button class="tog on" data-k="ema20">EMA 20</button>
-      <button class="tog on g" data-k="ema50">EMA 50</button>
-      <button class="tog on p" data-k="sma200">SMA 200</button>
-      <button class="tog on c" data-k="vwap">VWAP (20d)</button>
-      <button class="tog on bb-col" data-k="bb">Bollinger (20,2)</button>
-      <button class="tog on" data-k="sr">Entry / Stop / Targets</button>
-      <button class="tog on" data-k="vol">Volume</button>
-    </div>
-
     <div class="charts-wrap">
+      <!-- GOOGLE FINANCE-STYLE COMPOSITE OUTLOOK & EXTENDED QUOTE BANNER -->
+      <div class="gf-outlook-bar" id="gfOutlookBar">
+        <div class="gf-outlook-left">
+          <div class="gf-outlook-pill" id="gfOutlookPill">
+            <span>📈 Outlook:</span>
+            <span id="gfOutlookTxt" style="color:var(--muted)">Synthesizing analyst, wire &amp; quant outlook…</span>
+            <div class="gf-mini-meter" id="gfOutlookMeter">
+              <div style="width:50%;background:var(--green)"></div>
+              <div style="width:30%;background:var(--muted)"></div>
+              <div style="width:20%;background:var(--red)"></div>
+            </div>
+          </div>
+          <div class="gf-meta-pills" id="gfMetaPills"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button class="gf-goto-btn" onclick="jumpToIntelTab('analysis')">Go to Analysis ›</button>
+          <button class="gf-goto-btn" onclick="jumpToIntelTab('news')">Live Wire ›</button>
+        </div>
+      </div>
+
+      <div class="chart-toolbar">
+        <span class="t-hdr">OVERLAYS:</span>
+        <button class="tog on" data-k="ema20">EMA 20</button>
+        <button class="tog on g" data-k="ema50">EMA 50</button>
+        <button class="tog on p" data-k="sma200">SMA 200</button>
+        <button class="tog on c" data-k="vwap">VWAP (20d)</button>
+        <button class="tog on bb-col" data-k="bb">Bollinger (20,2)</button>
+        <button class="tog on" data-k="sr">Entry / Stop / Targets</button>
+        <button class="tog on" data-k="vol">Volume</button>
+      </div>
+
       <!-- MAIN CANDLESTICK PANE -->
       <div class="pane" style="height:350px">
         <div class="pane-lbl" id="mainPaneLbl">OHLCV + Institutional Overlays</div>
