@@ -142,6 +142,17 @@ def fetch_cnbc_quote(sym: str) -> dict:
         with urllib.request.urlopen(req, timeout=8) as r:
             d = json.loads(r.read().decode("utf-8"))
         q = d.get("FormattedQuoteResult", {}).get("FormattedQuote", [{}])[0]
+        cur_mkt_status = (q.get("curmktstatus") or "REG_MKT").upper()
+        ext = q.get("ExtendedMktQuote") or {}
+        ext_type_raw = (ext.get("type") or "").upper()
+        ext_price = parse_num(ext.get("last"))
+        ext_chg = parse_num(ext.get("change"))
+        ext_chg_pct = parse_num(ext.get("change_pct"))
+        ext_active = bool(cur_mkt_status in ("POST_MKT", "PRE_MKT") and ext_price is not None)
+        ext_session = (
+            "PRE" if "PRE" in (cur_mkt_status or ext_type_raw)
+            else ("POST" if "POST" in (cur_mkt_status or ext_type_raw) else "")
+        )
         meta = {
             "symbol": q.get("symbol", key),
             "longName": q.get("name") or q.get("shortName") or key,
@@ -159,6 +170,14 @@ def fetch_cnbc_quote(sym: str) -> dict:
             "regularMarketVolume": parse_num(q.get("volume")),
             "lastTime": q.get("last_time") or q.get("last_timedate") or "",
             "realTime": q.get("real_time") or "true",
+            "marketStatus": cur_mkt_status,
+            "extMarketActive": ext_active,
+            "extMarketType": ext_session if ext_active else "",
+            "extMarketPrice": ext_price if ext_active else None,
+            "extMarketChange": ext_chg if ext_active else None,
+            "extMarketChangePct": ext_chg_pct if ext_active else None,
+            "extMarketTime": (ext.get("last_timedate") or ext.get("last_time") or "") if ext_active else "",
+            "extMarketVolumeStr": (ext.get("volume_alt") or ext.get("volume") or "") if ext_active else "",
             "fiftyTwoWeekHigh": parse_num(q.get("yrhiprice")),
             "fiftyTwoWeekLow": parse_num(q.get("yrloprice")),
             "trailingPE": parse_num(q.get("pe")),
@@ -1752,17 +1771,45 @@ def fetch_stock_intelligence(symbol: str, market: str = "US") -> dict:
     elif base_meta.get("changePct") is not None:
         reg_chg_pct = base_meta.get("changePct")
 
-    post_price = _raw_val(pr.get("postMarketPrice"))
-    post_chg = _raw_val(pr.get("postMarketChange"))
-    post_chg_pct = _raw_val(pr.get("postMarketChangePercent"))
-    if post_chg_pct is not None:
-        post_chg_pct *= 100.0
+    mkt_state = str(pr.get("marketState") or "").upper()
+    reg_ts = int(_raw_val(pr.get("regularMarketTime")) or 0)
+    post_ts = int(_raw_val(pr.get("postMarketTime")) or 0)
+    pre_ts = int(_raw_val(pr.get("preMarketTime")) or 0)
 
-    pre_price = _raw_val(pr.get("preMarketPrice"))
-    pre_chg = _raw_val(pr.get("preMarketChange"))
-    pre_chg_pct = _raw_val(pr.get("preMarketChangePercent"))
-    if pre_chg_pct is not None:
-        pre_chg_pct *= 100.0
+    post_price = None
+    post_chg = None
+    post_chg_pct = None
+    pre_price = None
+    pre_chg = None
+    pre_chg_pct = None
+    ext_mkt_time = base_meta.get("extMarketTime") or ""
+    ext_mkt_vol = base_meta.get("extMarketVolumeStr") or ""
+
+    # Only surface After-Hours or Pre-Market when it is newer than Regular Session (never during REGULAR hours)
+    if mkt_state != "REGULAR" and base_meta.get("marketStatus") != "REG_MKT":
+        if (post_ts and post_ts >= reg_ts and post_ts >= pre_ts) or mkt_state in ("POST", "POSTPOST"):
+            post_price = _raw_val(pr.get("postMarketPrice"))
+            post_chg = _raw_val(pr.get("postMarketChange"))
+            post_chg_pct = _raw_val(pr.get("postMarketChangePercent"))
+            if post_chg_pct is not None:
+                post_chg_pct *= 100.0
+        elif (pre_ts and pre_ts >= reg_ts and pre_ts > post_ts) or mkt_state in ("PRE", "PREPRE"):
+            pre_price = _raw_val(pr.get("preMarketPrice"))
+            pre_chg = _raw_val(pr.get("preMarketChange"))
+            pre_chg_pct = _raw_val(pr.get("preMarketChangePercent"))
+            if pre_chg_pct is not None:
+                pre_chg_pct *= 100.0
+
+        # Fallback to CNBC real-time ExtendedMktQuote if Yahoo quoteSummary lacked extended fields
+        if post_price is None and pre_price is None and base_meta.get("extMarketActive"):
+            if base_meta.get("extMarketType") == "PRE":
+                pre_price = base_meta.get("extMarketPrice")
+                pre_chg = base_meta.get("extMarketChange")
+                pre_chg_pct = base_meta.get("extMarketChangePct")
+            else:
+                post_price = base_meta.get("extMarketPrice")
+                post_chg = base_meta.get("extMarketChange")
+                post_chg_pct = base_meta.get("extMarketChangePct")
 
     mkt_cap_raw = _raw_val(pr.get("marketCap")) or _raw_val(sd.get("marketCap"))
     mkt_cap_fmt = _fmt_val(pr.get("marketCap")) if pr.get("marketCap") else (base_meta.get("marketCapStr") or "N/A")
@@ -1810,6 +1857,8 @@ def fetch_stock_intelligence(symbol: str, market: str = "US") -> dict:
         "pre_market_price": round(pre_price, 2) if pre_price is not None else None,
         "pre_market_change": round(pre_chg, 2) if pre_chg is not None else None,
         "pre_market_change_pct": round(pre_chg_pct, 2) if pre_chg_pct is not None else None,
+        "ext_market_time": ext_mkt_time,
+        "ext_market_volume_str": ext_mkt_vol,
         "open": _raw_val(pr.get("regularMarketOpen")) or _raw_val(sd.get("open")) or base_meta.get("open"),
         "day_high": _raw_val(pr.get("regularMarketDayHigh")) or _raw_val(sd.get("dayHigh")) or base_meta.get("dayHigh"),
         "day_low": _raw_val(pr.get("regularMarketDayLow")) or _raw_val(sd.get("dayLow")) or base_meta.get("dayLow"),

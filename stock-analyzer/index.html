@@ -248,6 +248,34 @@
     .price-chg.up { background: rgba(34,197,94,.14); color: var(--green); }
     .price-chg.dn { background: rgba(239,68,68,.14); color: var(--red); }
 
+    .ext-tracker-box {
+      margin-top: 8px; padding: 7px 9px;
+      background: rgba(15,23,42,.78);
+      border: 1px solid rgba(249,115,22,.32);
+      border-radius: var(--r-sm);
+    }
+    .ext-tracker-box.up { border-color: rgba(34,197,94,.32); }
+    .ext-tracker-box.mode-active {
+      background: rgba(56,189,248,.12);
+      border-color: var(--accent);
+    }
+    .ext-hdr {
+      display: flex; justify-content: space-between; align-items: center; gap: 4px;
+      font-size: 9.5px; font-weight: 800; letter-spacing: .03em;
+      color: var(--muted); text-transform: uppercase; margin-bottom: 4px;
+    }
+    .ext-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;
+    }
+    .ext-val { font-size: 14.5px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+    .ext-sim-btn {
+      background: var(--bg3); border: 1px solid var(--border);
+      color: var(--accent); font-size: 9.5px; font-weight: 700;
+      padding: 2px 6px; border-radius: 4px; cursor: pointer;
+      transition: all .12s; margin-left: auto;
+    }
+    .ext-sim-btn:hover { border-color: var(--accent); background: rgba(56,189,248,.15); }
+
     /* Score Meter */
     .score-box {
       margin-top: 10px; padding: 9px 10px;
@@ -1178,7 +1206,7 @@
             </div>
             <div class="plan-grid">
               <div class="plan-card">
-                <div class="pl">Ideal Entry Zone</div>
+                <div class="pl" id="pEntryLbl">Ideal Entry Zone</div>
                 <div class="pv" style="color:var(--accent)" id="pEntry">—</div>
                 <div class="ps" id="pEntrySub">Pullback / POC confluence</div>
               </div>
@@ -1559,8 +1587,11 @@
 const S = {
   market: 'US',
   ticker: '',
+  rawCandles: [],
   candles: [],
   spyCandles: [],
+  useExtHours: false,
+  barsPerYear: 252,
   meta: {},
   events: { dividends: [], splits: [] },
   mcResult: null,
@@ -1599,6 +1630,55 @@ const mean = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
 const variance = (arr, m = mean(arr)) => arr.length > 1 ? arr.reduce((a,b)=>a+(b-m)**2,0)/(arr.length-1) : 0;
 const stdev = (arr, m = mean(arr)) => Math.sqrt(variance(arr, m));
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function getExtendedQuote() {
+  const m = S.meta || {};
+  const ov = S.intel?.overview || {};
+  if (m.extMarketActive && m.extMarketPrice != null) {
+    const regP = m.regularMarketPrice;
+    const chg = m.extMarketChange != null ? m.extMarketChange : (regP ? m.extMarketPrice - regP : 0);
+    const chgPct = m.extMarketChangePct != null ? m.extMarketChangePct : (regP ? (chg / regP) * 100 : 0);
+    const isPre = m.extMarketType === 'PRE';
+    return {
+      active: true,
+      type: isPre ? 'PRE' : 'POST',
+      label: isPre ? '🌅 Pre-Market' : '🌙 After-Hours',
+      shortTitle: isPre ? '🌅 Pre-Mkt' : '🌙 After-Hrs',
+      price: m.extMarketPrice,
+      change: chg,
+      changePct: chgPct,
+      timeStr: m.extMarketTime || ov.ext_market_time || '',
+      volStr: m.extMarketVolumeStr || ov.ext_market_volume_str || '',
+    };
+  }
+  if (ov.post_market_price != null) {
+    return {
+      active: true,
+      type: 'POST',
+      label: '🌙 After-Hours',
+      shortTitle: '🌙 After-Hrs',
+      price: ov.post_market_price,
+      change: ov.post_market_change ?? 0,
+      changePct: ov.post_market_change_pct ?? 0,
+      timeStr: ov.ext_market_time || '',
+      volStr: ov.ext_market_volume_str || '',
+    };
+  }
+  if (ov.pre_market_price != null) {
+    return {
+      active: true,
+      type: 'PRE',
+      label: '🌅 Pre-Market',
+      shortTitle: '🌅 Pre-Mkt',
+      price: ov.pre_market_price,
+      change: ov.pre_market_change ?? 0,
+      changePct: ov.pre_market_change_pct ?? 0,
+      timeStr: ov.ext_market_time || '',
+      volStr: ov.ext_market_volume_str || '',
+    };
+  }
+  return { active: false };
+}
 
 // ════════════════════════════════════════════════════════════════════════
 //  DATA INGESTION (Local Python Proxy + Multi-Proxy Fallback + Calibrated Offline Engine)
@@ -3117,6 +3197,16 @@ function buildTradeProposal() {
     risks.push(`Stochastic simulation projects only a ${mcResult.stats.probUp.toFixed(1)}% win probability with 5% tail risk at ${f$(mcResult.stats.p5)}.`);
   }
 
+  // Extended-Hours Gap Telemetry Check (when viewing Regular Close bars)
+  const extQ = getExtendedQuote();
+  if (extQ.active && !S.useExtHours && Math.abs(extQ.changePct || 0) >= 1.5) {
+    if ((extQ.changePct || 0) < 0) {
+      risks.unshift(`${extQ.label} Shock: Trading at ${f$(extQ.price)} (${fpct(extQ.changePct, 2)}${extQ.volStr ? ', Vol ' + extQ.volStr : ''}) vs. ${f$(price)} regular close — gap risk active; click "⚡ Model Ext" in tracker to stress-test.`);
+    } else {
+      catalysts.unshift(`${extQ.label} Gap Up: Trading at ${f$(extQ.price)} (${fpct(extQ.changePct, 2)}${extQ.volStr ? ', Vol ' + extQ.volStr : ''}) above ${f$(price)} regular close.`);
+    }
+  }
+
   score = Math.round(clamp(score, 8, 95));
 
   // Verdict
@@ -3125,21 +3215,6 @@ function buildTradeProposal() {
   else if (score >= 58) { signal = 'BUY'; conviction = 'Medium-High'; vClass = 'buy'; }
   else if (score <= 30) { signal = 'STRONG SELL'; conviction = 'High'; vClass = 'sell'; }
   else if (score <= 43) { signal = 'SELL'; conviction = 'Medium'; vClass = 'sell'; }
-
-  // Entry Zone, ATR Chandelier Stop-Loss, and R-Multiple Targets
-  const isBear = signal.includes('SELL');
-  const supportConfluence = Math.min(price, Math.max(vp.val, le20, price - 0.85 * latr));
-  const entryLow = isBear ? price : Math.min(price - 0.5 * latr, supportConfluence);
-  const entryHigh = isBear ? price + 0.5 * latr : price;
-  const entryMid = (entryLow + entryHigh) / 2;
-
-  const riskDist = Math.max(1.8 * latr, price * 0.025);
-  const stopLoss = isBear ? entryHigh + riskDist : entryLow - riskDist;
-  const tp1 = isBear ? entryMid - 1.5 * riskDist : entryMid + 1.5 * riskDist;
-  const tp2 = isBear ? entryMid - 2.5 * riskDist : entryMid + 2.5 * riskDist;
-  const tp3 = isBear ? entryMid - 4.0 * riskDist : Math.max(entryMid + 4.0 * riskDist, mcResult?.stats?.p75 || 0);
-
-  const rr = Math.abs(tp2 - entryMid) / Math.max(Math.abs(entryMid - stopLoss), 0.01);
 
   // Recommended Holding Period based on Hurst Regime & ATR Velocity
   const atrPct = (latr / price) * 100;
@@ -3150,50 +3225,148 @@ function buildTradeProposal() {
     horizon = '1–3 Weeks (Tactical Mean-Rev)';
   }
 
-  // Position Sizing (1% Account Risk vs Half-Kelly)
-  const acct = parseFloat(document.getElementById('acctSize').value) || 25000;
-  const riskDollars = acct * 0.01;
-  const perShareRisk = Math.max(Math.abs(price - stopLoss), 0.01);
-  const riskShares = Math.floor(riskDollars / perShareRisk);
-  const maxCapShares = Math.floor((acct * Math.max(0.05, Math.min(0.25, quant.halfKelly || 0.12))) / price);
-  const recShares = Math.max(1, Math.min(riskShares, maxCapShares || riskShares));
-  const recDollars = recShares * price;
-  const recPct = (recDollars / acct) * 100;
-
-  // Probabilities of hitting targets from MC
-  const pTP1 = mcResult ? mcResult.stats.probAbove(tp1).toFixed(0) + '% MC odds' : '1.5R';
-  const pTP2 = mcResult ? mcResult.stats.probAbove(tp2).toFixed(0) + '% MC odds' : '2.5R';
-  const pTP3 = mcResult ? mcResult.stats.probAbove(tp3).toFixed(0) + '% MC odds' : '4.0R';
-
   // Best backtested specialist strategy
   const bestBt = [...activeStrats.filter(s => !s.isMetaBoss)].sort((a, b) => b.sharpe - a.sharpe)[0] || activeStrats[0];
-
-  const thesis = [
-    `📌 EXECUTIVE SUMMARY (${ticker} @ ${f$(price)} — Verdict: ${signal} | Quant Score: ${score}/100):`,
-    `${ticker} is currently operating in a ${quant.regime} regime (Hurst Exponent H = ${quant.hurst.toFixed(2)}) with annualized volatility of ${(quant.annVol * 100).toFixed(1)}% and Daily ATR(14) of ${f$(latr)} (${atrPct.toFixed(2)}%). Across our 7 curated specialist strategies + Walk-Forward Meta-Boss, "${bestBt?.name}" achieved the highest specialist risk-adjusted return (Sharpe ${bestBt?.sharpe.toFixed(2)}, Net Return ${fpct((bestBt?.totalRet || 0) * 100, 1)}, Win Rate ${bestBt?.winRate.toFixed(0)}%) and currently signals ${bestBt?.liveSignal} (Meta-Boss: ${metaBoss?.liveSignal || 'CASH'} via ${metaBoss?.delegatedTo || 'Ensemble'}).`,
-    ``,
-    `🎯 ENTRY, EXIT & HOLDING HORIZON PLAN:`,
-    `• Optimal Entry Zone: ${f$(entryLow)} – ${f$(entryHigh)} (anchored to 20d VWAP ${f$(lvwap)}, KAMA ${f$(lkama)}, and Volume Profile POC ${f$(vp.poc)}; Value Area spans ${f$(vp.val)} to ${f$(vp.vah)}).`,
-    `• Stop-Loss Invalidation: ${f$(stopLoss)} (${fpct(((stopLoss - price) / price) * 100, 1)} from spot, calibrated via 1.8× Wilder ATR Chandelier & SuperTrend ${f$(lst.line)} protection).`,
-    `• Profit Targets & Horizon: Hold for ${horizon}. Scale out 1/3 at TP1 ${f$(tp1)} (${pTP1}), 1/3 at Base Target TP2 ${f$(tp2)} (${pTP2}, ${rr.toFixed(2)}:1 R/R), and trail the runner toward TP3 ${f$(tp3)} (${pTP3}).`,
-    `• Risk-Managed Sizing: For a ${f$(acct, 0)} portfolio risking ≤1% (${f$(riskDollars, 0)}) constrained by Half-Kelly (${((quant.halfKelly || 0.1) * 100).toFixed(1)}%), allocate ${recShares} shares (${f$(recDollars, 0)} or ${recPct.toFixed(1)}% of capital).`
-  ].join('\n');
+  const reclaimLevel = Math.max(le20, lkama);
+  const planCtx = { ticker, price, latr, atrPct, le20, lkama, lvwap, lstLine: lst.line, vp, quant, mcResult, horizon, bestBt, metaBoss, reclaimLevel };
+  const execPlan = computeProposalExecutionPlan(signal, score, planCtx);
 
   return {
     signal, conviction, vClass, score,
     techScore: score,
     fundScore: null,
-    reclaimLevel: Math.max(le20, lkama),
+    reclaimLevel,
     divergenceHtml: '',
+    ...execPlan,
+    horizon, horizonSub,
+    _planCtx: planCtx,
+    catalysts: catalysts.slice(0, 5),
+    risks: risks.slice(0, 5),
+  };
+}
+
+function computeProposalExecutionPlan(signal, dispScore, ctx) {
+  const { ticker, price, latr, atrPct, le20, lkama, lvwap, lstLine, vp, quant, mcResult, horizon, bestBt, metaBoss, reclaimLevel } = ctx;
+  const isWatchReclaim = (signal === 'AVOID / WAIT' || signal === 'HOLD (WATCH)');
+  const isBear = !isWatchReclaim && signal.includes('SELL');
+  const execMode = isWatchReclaim ? 'WATCH_RECLAIM' : (isBear ? 'BEAR_DEFENSIVE' : 'LONG');
+
+  const riskDist = Math.max(1.8 * latr, price * 0.025);
+  let entryLow, entryHigh, entryLabel, entrySub, stopLoss, stopMeta, tp1, tp2, tp3;
+
+  if (execMode === 'WATCH_RECLAIM') {
+    const reclaimTrigger = Math.max(reclaimLevel || price, price + 0.5 * latr);
+    entryLow = reclaimTrigger;
+    entryHigh = reclaimTrigger + 0.35 * latr;
+    entryLabel = 'Reclaim Trigger Zone';
+    entrySub = '⏳ Wait for EMA20/KAMA Reclaim';
+    const entryMid = (entryLow + entryHigh) / 2;
+    stopLoss = entryLow - riskDist;
+    stopMeta = '1.8× ATR Below Reclaim Trigger';
+    tp1 = entryMid + 1.5 * riskDist;
+    tp2 = entryMid + 2.5 * riskDist;
+    tp3 = Math.max(entryMid + 4.0 * riskDist, mcResult?.stats?.p75 || 0);
+  } else if (execMode === 'BEAR_DEFENSIVE') {
+    entryLow = price;
+    entryHigh = price + 0.5 * latr;
+    entryLabel = 'Trim / Short Zone';
+    entrySub = 'Resistance bounce / VWAP ceiling';
+    const entryMid = (entryLow + entryHigh) / 2;
+    stopLoss = entryHigh + riskDist;
+    stopMeta = '1.8× ATR Bear Invalidation';
+    tp1 = Math.max(0.01, entryMid - 1.5 * riskDist);
+    tp2 = Math.max(0.01, entryMid - 2.5 * riskDist);
+    tp3 = Math.max(0.01, entryMid - 4.0 * riskDist);
+  } else {
+    const supportConfluence = Math.min(price, Math.max(vp.val, le20, price - 0.85 * latr));
+    entryLow = Math.min(price - 0.5 * latr, supportConfluence);
+    entryHigh = price;
+    entryLabel = 'Ideal Entry Zone';
+    entrySub = 'Pullback / POC confluence';
+    const entryMid = (entryLow + entryHigh) / 2;
+    stopLoss = entryLow - riskDist;
+    stopMeta = '1.8× ATR Chandelier / Support';
+    tp1 = entryMid + 1.5 * riskDist;
+    tp2 = entryMid + 2.5 * riskDist;
+    tp3 = Math.max(entryMid + 4.0 * riskDist, mcResult?.stats?.p75 || 0);
+  }
+
+  const entryMid = (entryLow + entryHigh) / 2;
+  const rr = Math.abs(tp2 - entryMid) / Math.max(Math.abs(entryMid - stopLoss), 0.01);
+
+  // Position Sizing (1% Account Risk vs Half-Kelly)
+  const acct = parseFloat(document.getElementById('acctSize').value) || 25000;
+  const riskDollars = acct * 0.01;
+  const refEntry = execMode === 'WATCH_RECLAIM' ? entryMid : price;
+  const perShareRisk = Math.max(Math.abs(refEntry - stopLoss), 0.01);
+  const riskShares = Math.floor(riskDollars / perShareRisk);
+  const maxCapShares = Math.floor((acct * Math.max(0.05, Math.min(0.25, quant.halfKelly || 0.12))) / refEntry);
+  const plannedShares = Math.max(1, Math.min(riskShares, maxCapShares || riskShares));
+  const plannedDollars = plannedShares * refEntry;
+  const plannedPct = (plannedDollars / acct) * 100;
+
+  let recShares = plannedShares, recDollars = plannedDollars, recPct = plannedPct;
+  let sharesDisplay = `${plannedShares} sh (${f$(plannedDollars, 0)})`;
+  let allocDisplay = `${plannedPct.toFixed(1)}% of Portfolio · 1% Risk Cap`;
+  let sharesColor = 'var(--green)';
+
+  if (execMode === 'WATCH_RECLAIM') {
+    recShares = 0; recDollars = 0; recPct = 0;
+    sharesDisplay = '0 sh · Stand Aside';
+    allocDisplay = `Plan: ${plannedShares} sh (${plannedPct.toFixed(1)}%) on Reclaim`;
+    sharesColor = 'var(--yellow)';
+  } else if (execMode === 'BEAR_DEFENSIVE') {
+    recShares = 0; recDollars = 0; recPct = 0;
+    sharesDisplay = '0 sh Long · Cash';
+    allocDisplay = `Defensive Trim / Short Cap ≤ ${plannedShares} sh`;
+    sharesColor = 'var(--red)';
+  }
+
+  const mcProb = tp => {
+    if (!mcResult) return null;
+    return execMode === 'BEAR_DEFENSIVE'
+      ? (100 - mcResult.stats.probAbove(tp)).toFixed(0) + '% Downside MC'
+      : mcResult.stats.probAbove(tp).toFixed(0) + '% MC odds';
+  };
+  const pTP1 = mcProb(tp1) || '1.5R';
+  const pTP2 = mcProb(tp2) || '2.5R';
+  const pTP3 = mcProb(tp3) || '4.0R';
+
+  const planBullets = execMode === 'WATCH_RECLAIM' ? [
+    `• Stand-Aside / Trend-Reclaim Trigger: Do NOT buy the unconfirmed falling knife at ${f$(price)}, and do NOT short below Wall Street fundamental support. Wait for a daily close above ${f$(entryLow)} – ${f$(entryHigh)} (EMA 20 ${f$(le20)} / KAMA ${f$(lkama)} reclaim) before initiating longs.`,
+    `• Post-Reclaim Stop-Loss: ${f$(stopLoss)} (${fpct(((stopLoss - entryMid) / entryMid) * 100, 1)} below reclaim trigger, calibrated via 1.8× Wilder ATR).`,
+    `• Post-Reclaim Profit Targets (${horizon}): Scale out 1/3 at TP1 ${f$(tp1)} (${pTP1}), 1/3 at Base Target TP2 ${f$(tp2)} (${pTP2}, ${rr.toFixed(2)}:1 R/R), and trail toward TP3 ${f$(tp3)} (${pTP3}).`,
+    `• Watchlist Sizing Plan: Current active allocation is 0 shares (100% Cash protection). Upon confirmed reclaim of ${f$(entryLow)}, deploy ${plannedShares} shares (${f$(plannedDollars, 0)} or ${plannedPct.toFixed(1)}% of ${f$(acct, 0)} capital).`
+  ] : execMode === 'BEAR_DEFENSIVE' ? [
+    `• Defensive Trim / Resistance Zone: ${f$(entryLow)} – ${f$(entryHigh)} (spot / 0.5× ATR bounce toward 20d VWAP ${f$(lvwap)} and POC ${f$(vp.poc)}).`,
+    `• Bearish Invalidation Level: ${f$(stopLoss)} (${fpct(((stopLoss - price) / price) * 100, 1)} above spot, 1.8× ATR + SuperTrend ${f$(lstLine)} ceiling).`,
+    `• Downside Support Targets (${horizon}): Cover / re-evaluate at S1 ${f$(tp1)} (${pTP1}), Base Support S2 ${f$(tp2)} (${pTP2}, ${rr.toFixed(2)}:1 R/R), and S3 ${f$(tp3)} (${pTP3}).`,
+    `• Capital Preservation: Hold 0 long shares (Cash). Optional short/hedge sizing capped at ≤${plannedShares} shares (${f$(plannedDollars, 0)} or 1% portfolio risk).`
+  ] : [
+    `• Optimal Entry Zone: ${f$(entryLow)} – ${f$(entryHigh)} (anchored to 20d VWAP ${f$(lvwap)}, KAMA ${f$(lkama)}, and Volume Profile POC ${f$(vp.poc)}; Value Area spans ${f$(vp.val)} to ${f$(vp.vah)}).`,
+    `• Stop-Loss Invalidation: ${f$(stopLoss)} (${fpct(((stopLoss - price) / price) * 100, 1)} from spot, calibrated via 1.8× Wilder ATR Chandelier & SuperTrend ${f$(lstLine)} protection).`,
+    `• Profit Targets & Horizon: Hold for ${horizon}. Scale out 1/3 at TP1 ${f$(tp1)} (${pTP1}), 1/3 at Base Target TP2 ${f$(tp2)} (${pTP2}, ${rr.toFixed(2)}:1 R/R), and trail the runner toward TP3 ${f$(tp3)} (${pTP3}).`,
+    `• Risk-Managed Sizing: For a ${f$(acct, 0)} portfolio risking ≤1% (${f$(riskDollars, 0)}) constrained by Half-Kelly (${((quant.halfKelly || 0.1) * 100).toFixed(1)}%), allocate ${recShares} shares (${f$(recDollars, 0)} or ${recPct.toFixed(1)}% of capital).`
+  ];
+
+  const thesis = [
+    `📌 EXECUTIVE SUMMARY (${ticker} @ ${f$(price)}${S.useExtHours ? ' [EXT-HRS MODELED]' : ''} — Verdict: ${signal} | Score: ${dispScore}/100):`,
+    `${ticker} is currently operating in a ${quant.regime} regime (Hurst Exponent H = ${quant.hurst.toFixed(2)}) with annualized volatility of ${(quant.annVol * 100).toFixed(1)}% and Daily ATR(14) of ${f$(latr)} (${atrPct.toFixed(2)}%). Across our 7 curated specialist strategies + Walk-Forward Meta-Boss, "${bestBt?.name}" achieved the highest specialist risk-adjusted return (Sharpe ${bestBt?.sharpe.toFixed(2)}, Net Return ${fpct((bestBt?.totalRet || 0) * 100, 1)}, Win Rate ${bestBt?.winRate.toFixed(0)}%) and currently signals ${bestBt?.liveSignal} (Meta-Boss: ${metaBoss?.liveSignal || 'CASH'} via ${metaBoss?.delegatedTo || 'Ensemble'}).`,
+    ``,
+    `🎯 ENTRY, EXIT & HOLDING HORIZON PLAN:`,
+    ...planBullets
+  ].join('\n');
+
+  return {
+    execMode, entryLabel, entrySub, stopMeta,
     entryLow, entryHigh, stopLoss, tp1, tp2, tp3, rr,
     pTP1, pTP2, pTP3,
-    horizon, horizonSub,
     recShares, recDollars, recPct,
+    plannedShares, plannedDollars, plannedPct,
+    sharesDisplay, allocDisplay, sharesColor,
     shares: recShares,
     alloc: recDollars,
     dollarRisk: recShares * perShareRisk,
-    catalysts: catalysts.slice(0, 5),
-    risks: risks.slice(0, 5),
     thesis,
   };
 }
@@ -3217,15 +3390,25 @@ function renderProposal(p) {
     }
   }
 
+  const entryLblEl = document.getElementById('pEntryLbl');
+  if (entryLblEl) entryLblEl.textContent = p.entryLabel || 'Ideal Entry Zone';
   document.getElementById('pEntry').textContent = `${f$(p.entryLow)} – ${f$(p.entryHigh)}`;
+  const entrySubEl = document.getElementById('pEntrySub');
+  if (entrySubEl) entrySubEl.textContent = p.entrySub || 'Pullback / POC confluence';
+
   document.getElementById('pHorizon').textContent = p.horizon;
   document.getElementById('pHorizonSub').textContent = p.horizonSub;
   document.getElementById('pRR').textContent = `${p.rr.toFixed(2)} : 1`;
-  document.getElementById('pShares').textContent = `${p.recShares} sh (${f$(p.recDollars, 0)})`;
-  document.getElementById('pAlloc').textContent = `${p.recPct.toFixed(1)}% of Portfolio · 1% Risk Cap`;
+
+  const pSharesEl = document.getElementById('pShares');
+  pSharesEl.textContent = p.sharesDisplay || `${p.recShares} sh (${f$(p.recDollars, 0)})`;
+  pSharesEl.style.color = p.sharesColor || 'var(--green)';
+  document.getElementById('pAlloc').textContent = p.allocDisplay || `${p.recPct.toFixed(1)}% of Portfolio · 1% Risk Cap`;
 
   const price = S.candles[S.candles.length - 1].close;
   document.getElementById('tStop').textContent = `${f$(p.stopLoss)} (${fpct(((p.stopLoss - price) / price) * 100, 1)})`;
+  const stopMetaEl = document.getElementById('tStopMeta');
+  if (stopMetaEl && p.stopMeta) stopMetaEl.textContent = p.stopMeta;
   document.getElementById('tTP1').textContent = `${f$(p.tp1)} (${fpct(((p.tp1 - price) / price) * 100, 1)})`;
   document.getElementById('tTP1Meta').textContent = `1.5R · ${p.pTP1}`;
   document.getElementById('tTP2').textContent = `${f$(p.tp2)} (${fpct(((p.tp2 - price) / price) * 100, 1)})`;
@@ -3351,11 +3534,30 @@ function updateChartPriceLines(proposal) {
   // Remove previous lines
   S.priceLines.forEach(pl => { try { S.series.candle.removePriceLine(pl); } catch {} });
   S.priceLines = [];
+
+  const extQ = getExtendedQuote();
+  if (extQ.active && extQ.price != null && isFinite(extQ.price)) {
+    S.priceLines.push(S.series.candle.createPriceLine({
+      price: extQ.price,
+      color: (extQ.change || 0) >= 0 ? '#10b981' : '#f97316',
+      lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: extQ.shortTitle || 'Ext Hrs',
+    }));
+  }
+
   if (!S.ind.sr || !proposal) return;
+
+  const entryLineTitle = proposal.execMode === 'WATCH_RECLAIM'
+    ? 'Reclaim Trigger'
+    : proposal.execMode === 'BEAR_DEFENSIVE'
+      ? 'Trim / Short'
+      : 'Ideal Entry';
 
   const lines = [
     { price: proposal.tp2, color: '#22c55e', title: 'TP2 Target', style: LightweightCharts.LineStyle.Dashed },
-    { price: proposal.entryLow, color: '#38bdf8', title: 'Ideal Entry', style: LightweightCharts.LineStyle.Dotted },
+    { price: proposal.entryLow, color: proposal.execMode === 'WATCH_RECLAIM' ? '#f59e0b' : '#38bdf8', title: entryLineTitle, style: LightweightCharts.LineStyle.Dotted },
     { price: S.computed.vp?.poc, color: '#eab308', title: 'Vol POC', style: LightweightCharts.LineStyle.SparseDotted },
     { price: proposal.stopLoss, color: '#ef4444', title: 'Stop Loss', style: LightweightCharts.LineStyle.Dashed },
   ];
@@ -3375,22 +3577,48 @@ function updateSidebar() {
   const { candles, meta, quant, computed, proposal, ticker } = S;
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2] || last;
-  // Use exact real-time price and day change from CNBC quote metadata
-  const spotPrice = meta.regularMarketPrice || last.close;
+  // Use exact real-time regular session price and day change from CNBC quote metadata
+  const regLast = S.rawCandles?.length ? S.rawCandles[S.rawCandles.length - 1].close : last.close;
+  const spotPrice = meta.regularMarketPrice || regLast;
   const prevClose = meta.previousClose || prev.close;
   const chg = meta.change != null ? meta.change : (spotPrice - prevClose);
   const chgp = meta.changePct != null ? meta.changePct : ((chg / prevClose) * 100);
   const up = chg >= 0;
 
+  const extQ = getExtendedQuote();
+  const statusBadge = extQ.active
+    ? ' · <span style="color:var(--orange);font-weight:700">● EXT HRS</span>'
+    : (meta.regularMarketPrice ? ' · <span style="color:var(--green);font-weight:700">● LIVE</span>' : '');
+
+  let extHtml = '';
+  if (extQ.active) {
+    const extUp = (extQ.change || 0) >= 0;
+    const metaBits = [extQ.timeStr, extQ.volStr ? `Vol ${extQ.volStr}` : ''].filter(Boolean).join(' · ');
+    extHtml = `
+      <div class="ext-tracker-box ${extUp ? 'up' : ''} ${S.useExtHours ? 'mode-active' : ''}">
+        <div class="ext-hdr">
+          <span>${extQ.label}${S.useExtHours ? ' · ⚡ MODELED' : ''}</span>
+          <span style="font-weight:600;color:var(--dim);text-transform:none">${metaBits}</span>
+        </div>
+        <div class="ext-row">
+          <span class="ext-val">${f$(extQ.price)}</span>
+          <span class="price-chg ${extUp ? 'up' : 'dn'}" style="font-size:10.5px;padding:1px 6px">${extUp ? '▲' : '▼'} ${f$(Math.abs(extQ.change || 0))} (${fpct(extQ.changePct || 0)})</span>
+          <button class="ext-sim-btn" onclick="toggleExtHoursMode()" title="Toggle between Regular Close (${f$(spotPrice)}) and ${extQ.label} (${f$(extQ.price)}) across Chart, Monte Carlo &amp; Trade Proposal">${S.useExtHours ? '↩ Reg Close' : '⚡ Model Ext'}</button>
+        </div>
+      </div>
+    `;
+  }
+
   const scoreCol = proposal.score >= 60 ? 'var(--green)' : proposal.score <= 42 ? 'var(--red)' : 'var(--yellow)';
 
   document.getElementById('scPrice').innerHTML = `
     <div class="price-name">${meta.longName || meta.shortName || ticker}</div>
-    <div class="price-sub">${meta.exchangeName || 'US Equity'} · ${meta.instrumentType || 'EQUITY'} · ${meta.currency || 'USD'}${meta.regularMarketPrice ? ' · <span style="color:var(--green);font-weight:700">● LIVE</span>' : ''}</div>
+    <div class="price-sub">${meta.exchangeName || 'US Equity'} · ${meta.instrumentType || 'EQUITY'} · ${meta.currency || 'USD'}${statusBadge}</div>
     <div class="price-row">
       <div class="price-val">${f$(spotPrice)}</div>
       <div class="price-chg ${up ? 'up' : 'dn'}">${up ? '▲' : '▼'} ${f$(Math.abs(chg))} (${fpct(chgp)})</div>
     </div>
+    ${extHtml}
     <div class="score-box">
       <div class="score-top">
         <span class="score-lbl">Composite Quant Score</span>
@@ -4712,10 +4940,18 @@ function enrichProposalWithIntelligence(intel) {
       p.signal = 'HOLD'; p.vClass = 'hold'; p.conviction = 'Neutral / Wait';
     }
 
+    // Recompute Entry Zone, Stop-Loss, Targets & Sizing to match the final Quantamental Verdict
+    if (p._planCtx) {
+      const updatedExecPlan = computeProposalExecutionPlan(p.signal, p.score, p._planCtx);
+      Object.assign(p, updatedExecPlan);
+    }
+
     // Build Dual-Pillar Breakdown & Divergence Explainer Box
     const techCol = techScore >= 58 ? 'var(--green)' : techScore <= 40 ? 'var(--red)' : 'var(--yellow)';
     const fundCol = fundScore >= 60 ? 'var(--green)' : fundScore <= 40 ? 'var(--red)' : 'var(--yellow)';
-    const reclaimStr = p.reclaimLevel ? f$(p.reclaimLevel) : 'EMA 20';
+    const reclaimStr = p.entryLow && p.execMode === 'WATCH_RECLAIM'
+      ? `${f$(p.entryLow)} – ${f$(p.entryHigh)}`
+      : (p.reclaimLevel ? f$(p.reclaimLevel) : 'EMA 20');
 
     let divExplain = '';
     if (isFallingKnifeVsValue) {
@@ -4758,10 +4994,12 @@ function enrichProposalWithIntelligence(intel) {
     p.catalysts = [...extraCats, ...(p.catalysts || [])].slice(0, 5);
     p.risks = [...extraRisks, ...(p.risks || [])].slice(0, 5);
     if (ov.ai_executive_summary) {
-      p.thesis = `${p.thesis} Fundamental & Street Intelligence: ${ov.ai_executive_summary}`;
+      p.thesis = `${p.thesis}\n\n🏛️ FUNDAMENTAL & STREET INTELLIGENCE:\n${ov.ai_executive_summary}`;
     }
     renderProposal(p);
+    updateChartPriceLines(p);
     updateSidebar();
+    updateChatContextUI(false);
   }
 }
 
@@ -4792,15 +5030,64 @@ function togglePanel(id) {
   document.getElementById(id).classList.toggle('collapsed');
 }
 
+function toggleExtHoursMode() {
+  const extQ = getExtendedQuote();
+  if (!extQ.active || !S.rawCandles?.length) return;
+  S.useExtHours = !S.useExtHours;
+
+  if (S.useExtHours) {
+    const cloned = S.rawCandles.map(c => ({ ...c }));
+    const lastBar = cloned[cloned.length - 1];
+    lastBar.close = extQ.price;
+    lastBar.high = Math.max(lastBar.high, extQ.price);
+    lastBar.low = Math.min(lastBar.low, extQ.price);
+    S.candles = cloned;
+  } else {
+    S.candles = S.rawCandles.map(c => ({ ...c }));
+  }
+
+  const barsPerYear = S.barsPerYear || 252;
+  updateCharts(S.candles);
+  S.quant = computeQuantMetrics(S.candles, S.spyCandles, S.events, barsPerYear);
+  const closes = S.candles.map(c => c.close);
+  const nP = clamp(parseInt(document.getElementById('mcPaths').value) || 1000, 100, 3000);
+  const nD = clamp(parseInt(document.getElementById('mcDays').value) || 63, 5, 252);
+  const mcMod = document.getElementById('mcModel').value;
+  const mcVol = document.getElementById('mcVolMode').value;
+  S.mcResult = runMC(closes, nP, nD, mcMod, mcVol);
+  drawMC(document.getElementById('mcCanvas'), S.mcResult, S.candles);
+  updateMCStats(S.mcResult);
+
+  const costBps = parseFloat(document.getElementById('btCostBps').value) || 10;
+  S.btResults = runStrategyBacktests(S.candles, costBps, barsPerYear);
+  renderBacktestsUI(S.btResults);
+
+  S.proposal = buildTradeProposal();
+  if (S.intel) {
+    enrichProposalWithIntelligence(S.intel);
+  } else {
+    renderProposal(S.proposal);
+    updateChartPriceLines(S.proposal);
+    updateSidebar();
+  }
+  renderMicrostructureUI();
+  const last = S.candles[S.candles.length - 1];
+  setStatus(`${S.ticker} · ${S.useExtHours ? `${extQ.label} Modeled @ ${f$(last.close)}` : `Regular Close @ ${f$(last.close)}`} · Verdict: ${S.proposal.signal} (${S.proposal.score}/100)`);
+  updateChatContextUI(false);
+}
+
 async function analyze() {
   const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
   if (!ticker) return;
   S.ticker = ticker;
+  S.intel = null;
+  S.useExtHours = false;
 
   const rBtn = document.querySelector('.rng.active');
   const range = rBtn?.dataset.r || '1y';
   const intv = rBtn?.dataset.i || '1d';
   const barsPerYear = intv === '1h' ? 252 * 6.5 : intv === '1wk' ? 52 : 252;
+  S.barsPerYear = barsPerYear;
   const bSym = benchTicker();
   const bLbl = benchName();
 
@@ -4815,6 +5102,7 @@ async function analyze() {
       ticker === bSym ? Promise.resolve(null) : loadStock(bSym, range, intv).catch(() => null),
     ]);
 
+    S.rawCandles = stockData.candles.map(c => ({ ...c }));
     S.candles = stockData.candles;
     S.meta = stockData.meta;
     S.events = stockData.events;
@@ -6117,14 +6405,20 @@ function buildLiveDossierForLLM() {
     `#${c.rank} ${c.symbol} (${c.weekly_alpha_score}/100 ${c.weekly_action}, ${c.setup_type}, Entry ${f$(c.weekly_plan.entry_zone[0])}–${f$(c.weekly_plan.entry_zone[1])}, P/E: ${c.pe_ttm ?? 'N/A'})`
   ).join('; ');
 
+  const extQ = getExtendedQuote();
+  const extLine = extQ.active
+    ? `Extended-Hours Tape (${extQ.label}): Price=${f$(extQ.price)} (${fpct(extQ.changePct || 0, 2)}, ${extQ.change >= 0 ? '+' : ''}${f$(extQ.change || 0)}${extQ.volStr ? `, Vol=${extQ.volStr}` : ''}${extQ.timeStr ? ` @ ${extQ.timeStr}` : ''}) | Quant Mode=${S.useExtHours ? 'Modeled on Extended-Hours Price' : 'Official Regular Session Close'}`
+    : `Extended-Hours Tape: Inactive (Regular Session Reference)`;
+
   return [
     `Active Instrument: ${sym} (${S.meta?.longName || sym}) | Market: ${S.market === 'IN' ? 'NSE India (INR ₹)' : 'US Equities (USD $)'}`,
     `Spot Price: ${f$(last.close)} | Dual-Pillar Quantamental Score: ${p.score}/100 (Technical Timing Score: ${p.techScore ?? p.score}/100, Street/Fundamental Score: ${p.fundScore ?? 'N/A'}/100) | Action Verdict: ${p.signal} (${p.conviction})`,
+    extLine,
     `Trend & Moving Averages: EMA20=${f$(le20)}, EMA50=${f$(le50)}, SMA200=${f$(ls200)}, Kaufman KAMA=${f$(lkama)} (Efficiency Ratio ${(lkamaER * 100).toFixed(0)}%), ATR SuperTrend=${lst.dir === 1 ? 'BULL' : 'BEAR'} @ ${f$(lst.line)}, Reclaim Trigger=${f$(p.reclaimLevel || le20)}`,
     `Momentum & Volatility Radar: RSI(14)=${lrsi.toFixed(1)}, Connors RSI(2)=${lrsi2.toFixed(1)}, MACD Hist=${(lmcd.hist || 0).toFixed(3)}, TTM Squeeze=${lsq.sqOn ? 'COILED ON' : 'OFF'} (NR7=${lsq.isNR7 ? 'YES' : 'NO'}, Mom=${(lsq.mom || 0).toFixed(2)}), Wilder ATR(14)=${f$(latr)}`,
     `Volume Profile (20-Bin): POC=${f$(vp.poc)}, Value Area Low (VAL)=${f$(vp.val)}, Value Area High (VAH)=${f$(vp.vah)}`,
     `Risk & Regime Metrics: Hurst H=${q.hurst.toFixed(2)} (${q.regime}), Annualized Sharpe=${q.sharpe.toFixed(2)}, Sortino=${q.sortino.toFixed(2)}, Calmar=${q.calmar.toFixed(2)}, Max Drawdown=${fpct(q.maxDD * 100, 1)}, AnnVol=${(q.annVol * 100).toFixed(1)}%, Beta=${q.beta?.toFixed(2) ?? 'N/A'}, Jensen's Alpha=${q.alphaAnn != null ? fpct(q.alphaAnn * 100, 1) : 'N/A'}, Daily VaR(95%)=${fpct(q.var95 * 100, 2)}, CVaR(95%)=${fpct(q.cvar95 * 100, 2)}, Half-Kelly=${(q.halfKelly * 100).toFixed(1)}%`,
-    `Execution Plan: Ideal Entry=${f$(p.entryLow)}–${f$(p.entryHigh)}, Chandelier Stop-Loss=${f$(p.stopLoss)}, TP1(1.5R)=${f$(p.tp1)}, TP2(2.5R)=${f$(p.tp2)}, TP3(4.0R)=${f$(p.tp3)}, Holding Horizon=${p.horizon}, Suggested Sizing=${p.shares} shares (${f$(p.alloc, 0)})`,
+    `Execution Plan (${p.execMode || 'LONG'}): ${p.entryLabel || 'Entry'}=${f$(p.entryLow)}–${f$(p.entryHigh)}, Stop-Loss=${f$(p.stopLoss)}, TP1(1.5R)=${f$(p.tp1)}, TP2(2.5R)=${f$(p.tp2)}, TP3(4.0R)=${f$(p.tp3)}, Holding Horizon=${p.horizon}, Active Sizing=${p.sharesDisplay || (p.shares + ' sh')} (${p.allocDisplay || ''})`,
     `Monte Carlo Simulation (${mc.nDays}d ${mc.model.toUpperCase()}): Win Probability=${mc.stats.probUp.toFixed(1)}%, Bear Tail P5=${f$(mc.stats.p5)}, P25=${f$(mc.stats.p25)}, Median P50=${f$(mc.stats.med)}, P75=${f$(mc.stats.p75)}, Bull Tail P95=${f$(mc.stats.p95)}, 5% Expected Shortfall (CVaR)=${f$(mc.stats.cvarPrice)} (${fpct(mc.stats.cvarPct, 1)})`,
     `Systematic Strategy Backtester (7 Specialists + Walk-Forward Meta-Boss):\n${btLines}`,
     `Current Weekly Top 5 Alpha Picks (${S.market}): ${wkTop || 'N/A'}`,
@@ -6476,7 +6770,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('acctSize').addEventListener('change', () => {
     if (S.candles.length) {
       S.proposal = buildTradeProposal();
-      renderProposal(S.proposal);
+      if (S.intel) enrichProposalWithIntelligence(S.intel);
+      else {
+        renderProposal(S.proposal);
+        updateChartPriceLines(S.proposal);
+      }
     }
     if (S.weeklyData) runWeeklyScanner();
   });
@@ -6518,7 +6816,11 @@ document.addEventListener('DOMContentLoaded', () => {
     drawMC(document.getElementById('mcCanvas'), S.mcResult, S.candles);
     updateMCStats(S.mcResult);
     S.proposal = buildTradeProposal();
-    renderProposal(S.proposal);
+    if (S.intel) enrichProposalWithIntelligence(S.intel);
+    else {
+      renderProposal(S.proposal);
+      updateChartPriceLines(S.proposal);
+    }
   };
   document.getElementById('mcRunBtn').addEventListener('click', triggerMC);
   document.getElementById('mcModel').addEventListener('change', triggerMC);
