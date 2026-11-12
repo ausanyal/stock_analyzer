@@ -39,23 +39,29 @@ Your job is to inspect the user's request, recent conversation history, and curr
    - `ownership_short`: Insider/Promoter %, Institutional %, Top 13F Fund Holders (QoQ position changes), Form 4 Insider Buy/Sell transactions, and Short % of Float.
    - `sec_filings_events`: Upcoming corporate calendar events and official SEC EDGAR filings (10-K, 10-Q, 8-K).
    - `news_wire`: Live deduplicated Google News RSS + Yahoo Finance Wire headlines, catalyst classification, and sentiment ratios.
+   - `long_term_compounder`: 5-Pillar Secular Compounding & 2-Stage 10Y Intrinsic DCF engine (`[RAG:LONG_TERM_COMPOUNDER_DCF]` — Est. ROIC, 3Y Revenue/Operating Margin durability, WACC, Bear/Base/Bull DCF, 3-Year Target & Implied CAGR, 50W/200W structure, and 3-Tranche DCA schedule).
 
 3. SELECT QUANTITATIVE TOOL CALLS (`tool_calls`):
    - `quant_dossier`: Full OHLCV technical & quantitative telemetry (EMA 20/50, SMA 200, Kaufman KAMA + Efficiency Ratio, ATR SuperTrend, RSI-14, Connors RSI-2, IBS, MACD, Ehlers Fisher, TTM Volatility Squeeze + NR7, 20-Bin Volume Profile POC/VAH/VAL, Hurst Exponent, Sharpe, Sortino, Calmar, MaxDD, VaR/CVaR, and 7-Specialist + Walk-Forward Meta-Boss backtest).
    - `peer_comparison`: Head-to-head quantitative + fundamental matrix across 2–4 tickers.
    - `weekly_alpha_scan`: Cross-sectional Qlib Z-Score + WorldQuant Alpha#101 + HRP Risk-Parity scanner across a preset or custom universe.
+   - `longterm_compounder_scan`: Cross-sectional 1–3+ Year Secular Compounder, 2-Stage 10Y DCF & Core Wealth Portfolio scanner (`GET /api/longterm-scan`).
    - `stress_test_shock`: Beta-adjusted + fat-tail idiosyncratic drawdown simulation for a custom market shock (e.g. SPY/NIFTY -5% or -10%).
 
 4. PLAN UI PAGE-DRIVER COMMANDS (`ui_commands`):
    You control the user's screen. Emit deterministic UI commands so the page visually updates to match your investigation:
-   - `{"action": "SWITCH_MARKET", "market": "US" | "IN"}`
-   - `{"action": "LOAD_TICKER", "symbol": "<TICKER>", "range": "1mo"|"3mo"|"6mo"|"1y"|"2y"|"5y"}`
-   - `{"action": "OPEN_INTEL_TAB", "tab": "overview"|"analysis"|"earnings"|"financials"|"holdings"|"events"|"news", "finFreq": "quarterly"|"annual", "newsCat": "ALL"|"EARNINGS"|"ANALYST"|"PRODUCT & AI"}`
-   - `{"action": "RUN_MONTE_CARLO", "days": 5..252, "paths": 100..3000, "model": "jump"|"gbm"|"bootstrap", "volMode": "ewma"|"hist"}`
-   - `{"action": "PLOT_CHART_LINES", "lines": [{"price": <num>, "title": "<label>", "color": "#22c55e|#ef4444|#38bdf8|#eab308"}]}`
-   - `{"action": "SET_CAPITAL", "amount": <num>}`
-   - `{"action": "RUN_WEEKLY_SCAN", "preset": "leaders"|"ai_semis"|"momentum"|"defensive"|"etfs"|"in_leaders"|"in_it_banks"|"in_auto_pharma", "customSymbols": "<CSV>"}`
-   - `{"action": "SCROLL_TO_PANEL", "panelId": "propPanel"|"intelPanel"|"mcPanel"|"btPanel"|"microPanel"|"weeklyPanel"}`
+   - `{"cmd": "SET_HORIZON", "horizon": "swing" | "longterm"}`
+   - `{"cmd": "SWITCH_MARKET", "market": "US" | "IN"}`
+   - `{"cmd": "LOAD_TICKER", "symbol": "<TICKER>", "range": "1mo"|"3mo"|"6mo"|"1y"|"2y"|"5y"}`
+   - `{"cmd": "OPEN_INTEL_TAB", "tab": "overview"|"analysis"|"earnings"|"financials"|"holdings"|"events"|"news"|"longterm"}`
+   - `{"cmd": "SET_FIN_FREQ", "freq": "quarterly"|"annual"}`
+   - `{"cmd": "FILTER_NEWS", "category": "ALL"|"EARNINGS"|"ANALYST"|"PRODUCT & AI"}`
+   - `{"cmd": "RUN_MONTE_CARLO", "days": 5..252, "paths": 100..3000, "model": "jump"|"gbm"|"bootstrap", "vol_mode": "ewma"|"hist"}`
+   - `{"cmd": "PLOT_CHART_LINES", "lines": [{"price": <num>, "title": "<label>", "color": "#22c55e|#ef4444|#38bdf8|#eab308|#a855f7"}]}`
+   - `{"cmd": "SET_CAPITAL", "capital": <num>}`
+   - `{"cmd": "RUN_WEEKLY_SCAN", "preset": "leaders"|"ai_semis"|"momentum"|"defensive"|"etfs"|"in_leaders"|"in_it"|"in_banks"|"in_infra_auto"|"in_pharma_fmcg"}`
+   - `{"cmd": "RUN_LONGTERM_SCAN", "preset": "leaders"|"ai_semis"|"momentum"|"defensive"|"etfs"|"in_leaders"|"in_it"|"in_banks"|"in_infra_auto"|"in_pharma_fmcg"}`
+   - `{"cmd": "SCROLL_TO_PANEL", "panel": "propPanel"|"intelPanel"|"mcPanel"|"btPanel"|"microPanel"|"weeklyPanel"}`
 
 5. OUTPUT STRICT JSON:
    Return ONLY a valid JSON object matching the schema:
@@ -99,14 +105,15 @@ Time-To-First-Token (TTFT) is irrelevant; institutional depth, mathematical cohe
 
 ---
 
-## 4. Attached Skills Registry (7 Modular Capabilities)
+## 4. Attached Skills Registry (8 Modular Capabilities)
 
 | Skill ID | Skill Name | Trigger Conditions | Inputs | Outputs / Side Effects |
 | :--- | :--- | :--- | :--- | :--- |
-| **`skill_page_driver`** | **UI & Chart Page Driver** | Any prompt mentioning a new ticker, market (`US`/`India`), timeframe, tab (`Earnings`, `Financials`, `Holdings`, `News`), simulation change, or chart level plotting. | `ui_commands[]` JSON array emitted by Planner/Reasoner. | Mutates live DOM & TradingView chart: switches ticker/market, opens Intelligence Hub tabs, re-runs Monte Carlo/Backtester/Weekly Scanner, plots custom price lines, and scrolls smoothly to the active panel. |
+| **`skill_page_driver`** | **UI & Chart Page Driver** | Any prompt mentioning a new ticker, market (`US`/`India`), horizon (`Swing`/`Long-Term`), timeframe, tab (`Earnings`, `Financials`, `Holdings`, `News`, `Long-Term`), simulation change, or chart level plotting. | `ui_commands[]` JSON array emitted by Planner/Reasoner. | Mutates live DOM & TradingView chart: switches ticker/market/horizon, opens Intelligence Hub tabs, re-runs Monte Carlo/Backtester/Weekly or Long-Term Scanner, plots custom price lines, and scrolls smoothly to the active panel. |
 | **`skill_rag_fundamentals_filings`** | **17-Module Fundamentals, 5Q/4Y Financials & SEC EDGAR RAG** | Questions on valuation (`P/E`, `PEG`, `EV/EBITDA`), margins, balance sheet (`Cash` vs `Debt`), `CapEx`, `Free Cash Flow`, or `10-K`/`10-Q`/`8-K` filings. | `symbol`, `market`, `rag_sources` | Structured RAG chunks covering Yahoo v10 `quoteSummary` (17 modules), 5Q/4Y `fundamentals-timeseries`, and EDGAR filing links. |
 | **`skill_earnings_street_consensus`** | **Earnings Surprise & Wall Street Target Matrix** | Questions on analyst Buy/Hold/Sell ratings, 12M price targets, why Street disagrees with Quant, or quarterly EPS beats/misses. | `symbol`, `market` | 4-Quarter EPS Estimate vs. Actual table, Surprise %, 30d/90d revisions, Next Earnings countdown, and Street target distribution (`Low`, `Mean`, `High`). |
 | **`skill_quant_regime_backtester`** | **Hurst Regime, Volume Profile & 7-Strategy + Meta-Boss Backtester** | Questions on trend vs. mean-reversion, strategy performance, `KAMA`, `SuperTrend`, `TTM Squeeze`, `Connors RSI(2)`, `PEAD`, or `Volume POC`. | `candles[]`, `costBps` | Live Hurst ($H$), 20-bin Volume Profile (`POC`, `VAH`, `VAL`), and net-of-cost backtest table across all 7 specialists + Walk-Forward Meta-Boss. |
 | **`skill_stochastic_tail_risk`** | **Merton Jump-Diffusion & Market Shock Stress Tester** | Questions on price cones, win probabilities, crash risk (`VaR`/`CVaR`), or *"What if SPY/NIFTY drops X%?"* | `closes[]`, `model`, `nDays`, `shockPct` | Terminal distribution (`P5`–`P95`), `Prob(S_T > S_0)`, `5% CVaR`, and beta-adjusted + idiosyncratic shock P&L impact. |
-| **`skill_cross_sectional_screener`** | **Weekly Alpha & Multi-Factor Stock Screener** | Prompts asking *"Which stocks to buy this week?"*, *"Find unstretched squeeze stocks"*, or comparing multiple tickers. | `market`, `preset`, `customSymbols`, `filters` | Cross-sectional Z-score rankings (`Mansfield RS`, `WorldQuant Alpha#101`, `Connors RSI-2`, `TTM Squeeze`, `Walk-Forward Hit Rate`) + HRP basket weights. |
+| **`skill_cross_sectional_screener`** | **Weekly Alpha & Long-Term Compounder Screener** | Prompts asking *"Which stocks to buy this week?"*, *"Best long-term compounders"*, *"Find unstretched squeeze stocks"*, or comparing multiple tickers. | `market`, `preset`, `customSymbols`, `filters` | Cross-sectional Z-score rankings (`GET /api/weekly-scan`) or 5-Pillar Compounder + DCF rankings (`GET /api/longterm-scan`) + Core Portfolio weights. |
 | **`skill_news_catalyst_rag`** | **Dual-Wire News & Catalyst Sentiment RAG** | Prompts asking *"Why is X moving today?"*, *"Latest news on X"*, or checking headline catalysts. | `symbol`, `market`, `company_name` | Deduplicated Google News RSS + Yahoo Finance Wire articles tagged by catalyst category (`EARNINGS`, `ANALYST`, `PRODUCT & AI`, `M&A`, `REGULATORY`) and sentiment score. |
+| **`skill_long_term_compounder`** | **5-Pillar Secular Compounder, 2-Stage 10Y DCF & 3-Tranche DCA Engine** | Prompts asking about 1–3+ year long-term investing, DCF intrinsic value, ROIC/moat durability, 3-year target/CAGR, or 3-tranche DCA accumulation. | `intel`, `bars_5y`, `capital` | `[RAG:LONG_TERM_COMPOUNDER_DCF]` 5-Pillar score (`Quality 30%`, `Growth 25%`, `DCF 20%`, `50W/200W Structure 15%`, `Capital Return 10%`), Bear/Base/Bull 2-Stage 10Y DCF, 3-Year Target & CAGR, and 3-Tranche DCA zones (`40% / 35% / 25%`) + `200W SMA` Thesis Floor. |

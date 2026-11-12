@@ -161,6 +161,30 @@
       background: rgba(245,158,11,.18); color: #fbbf24;
       border-color: rgba(245,158,11,.45); box-shadow: 0 1px 4px rgba(0,0,0,.35);
     }
+    .horizon-tabs {
+      display: flex; gap: 3px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: 2px;
+      flex-shrink: 0;
+    }
+    .hz-tab {
+      background: transparent; border: 1px solid transparent;
+      color: var(--muted); padding: 4px 10px;
+      border-radius: 4px; font-size: 11.5px; font-weight: 700;
+      cursor: pointer; transition: all .15s;
+      display: flex; align-items: center; gap: 4px; white-space: nowrap;
+    }
+    .hz-tab:hover { color: var(--text); }
+    .hz-tab.active[data-h="swing"] {
+      background: rgba(56,189,248,.16); color: var(--accent);
+      border-color: rgba(56,189,248,.4); box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    }
+    .hz-tab.active[data-h="longterm"] {
+      background: rgba(16,185,129,.18); color: #34d399;
+      border-color: rgba(16,185,129,.48); box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    }
     .search-wrap { display: flex; gap: 5px; width: 185px; flex-shrink: 0; }
     #tickerInput {
       flex: 1; min-width: 0;
@@ -1070,6 +1094,10 @@
     <button class="mkt-tab active" data-m="US" title="US Equities (NASDAQ / NYSE · USD $)">🇺🇸 US Market</button>
     <button class="mkt-tab" data-m="IN" title="Indian Equities (NSE / BSE · INR ₹)">🇮🇳 India (NSE)</button>
   </div>
+  <div class="horizon-tabs" id="horizonTabs" title="Switch between 1–8 Week Tactical Swing Trading and 1–3+ Year Secular Compounding (DCF + 3-Tranche DCA)">
+    <button class="hz-tab active" data-h="swing">⚡ Swing (1–8W)</button>
+    <button class="hz-tab" data-h="longterm">🏛️ Long-Term (1–3Y)</button>
+  </div>
   <div class="search-wrap">
     <input type="text" id="tickerInput" placeholder="Ticker (e.g. NVDA, AAPL)" maxlength="16">
     <button class="btn" id="analyzeBtn">Analyze</button>
@@ -1191,8 +1219,8 @@
       <div class="panel" id="propPanel">
         <div class="panel-hdr" onclick="togglePanel('propPanel')">
           <div class="panel-title">
-            <span>🎯</span>
-            Executive Trade Proposal, Entry/Exit &amp; Holding Horizon
+            <span id="propIcon">🎯</span>
+            <span id="propTitleTxt">Executive Trade Proposal, Entry/Exit &amp; Holding Horizon</span>
             <span class="panel-sub" id="propSub">Algorithmic Multi-Factor + Gemini AI</span>
           </div>
           <span class="panel-chev">▼</span>
@@ -1200,7 +1228,7 @@
         <div class="panel-body">
           <div class="proposal-hero">
             <div class="verdict-box hold" id="verdictBox">
-              <div class="verdict-lbl">Action Proposal</div>
+              <div class="verdict-lbl" id="verdictLbl">Action Proposal</div>
               <div class="verdict-sig" id="verdictSig">—</div>
               <div class="verdict-conf" id="verdictConf">Score: —/100</div>
             </div>
@@ -1216,12 +1244,12 @@
                 <div class="ps" id="pHorizonSub">Regime &amp; half-life calibrated</div>
               </div>
               <div class="plan-card">
-                <div class="pl">Risk / Reward</div>
+                <div class="pl" id="pRRLbl">Risk / Reward</div>
                 <div class="pv" id="pRR">—</div>
                 <div class="ps" id="pRRSub">To Base Target (TP2)</div>
               </div>
               <div class="plan-card">
-                <div class="pl">Suggested Position</div>
+                <div class="pl" id="pSharesLbl">Suggested Position</div>
                 <div class="pv" style="color:var(--green)" id="pShares">—</div>
                 <div class="ps" id="pAlloc">1% Risk / Half-Kelly</div>
               </div>
@@ -1232,22 +1260,22 @@
 
           <div class="targets-row">
             <div class="t-card stop">
-              <div class="tlbl">🛑 Stop-Loss (Invalidation)</div>
+              <div class="tlbl" id="tStopLbl">🛑 Stop-Loss (Invalidation)</div>
               <div class="tval" style="color:var(--red)" id="tStop">—</div>
               <div class="tmeta" id="tStopMeta">2.0× ATR Chandelier / Support</div>
             </div>
             <div class="t-card tp1">
-              <div class="tlbl">🎯 Target 1 (Conservative)</div>
+              <div class="tlbl" id="tTP1Lbl">🎯 Target 1 (Conservative)</div>
               <div class="tval" style="color:var(--accent)" id="tTP1">—</div>
               <div class="tmeta" id="tTP1Meta">1.5R · Partial Trim</div>
             </div>
             <div class="t-card tp2">
-              <div class="tlbl">🎯 Target 2 (Base Case)</div>
+              <div class="tlbl" id="tTP2Lbl">🎯 Target 2 (Base Case)</div>
               <div class="tval" style="color:var(--green)" id="tTP2">—</div>
               <div class="tmeta" id="tTP2Meta">2.5R · Core Exit</div>
             </div>
             <div class="t-card tp3">
-              <div class="tlbl">🚀 Target 3 (Bull / Runner)</div>
+              <div class="tlbl" id="tTP3Lbl">🚀 Target 3 (Bull / Runner)</div>
               <div class="tval" style="color:var(--purple)" id="tTP3">—</div>
               <div class="tmeta" id="tTP3Meta">4.0R · P75/P90 Stretch</div>
             </div>
@@ -1282,6 +1310,7 @@
         <div class="panel-body">
           <div class="intel-tabs" id="intelTabsBar">
             <button class="intel-tab active" data-tab="overview" onclick="switchIntelTab('overview')">📊 Overview</button>
+            <button class="intel-tab" data-tab="longterm" onclick="switchIntelTab('longterm')" style="border-color:rgba(16,185,129,.35)">🏛️ Long-Term DCF &amp; DCA</button>
             <button class="intel-tab" data-tab="analysis" onclick="switchIntelTab('analysis')">🎯 Analysis</button>
             <button class="intel-tab" data-tab="earnings" onclick="switchIntelTab('earnings')">📈 Earnings</button>
             <button class="intel-tab" data-tab="financials" onclick="switchIntelTab('financials')">📑 Financials</button>
@@ -1293,6 +1322,7 @@
           <div class="intel-pane active" id="intelPane-overview">
             <div style="text-align:center;padding:18px;color:var(--muted)">Loading institutional overview &amp; key statistics…</div>
           </div>
+          <div class="intel-pane" id="intelPane-longterm"></div>
           <div class="intel-pane" id="intelPane-analysis"></div>
           <div class="intel-pane" id="intelPane-earnings"></div>
           <div class="intel-pane" id="intelPane-financials"></div>
@@ -1302,12 +1332,12 @@
         </div>
       </div>
 
-      <!-- 1B. WEEKLY ALPHA RECOMMENDATIONS & CROSS-SECTIONAL PLAYBOOK (MON–FRI HORIZON) -->
+      <!-- 1B. WEEKLY ALPHA / LONG-TERM COMPOUNDER CROSS-SECTIONAL PLAYBOOK -->
       <div class="panel" id="weeklyPanel">
         <div class="panel-hdr" onclick="togglePanel('weeklyPanel')">
           <div class="panel-title">
-            <span>📅</span>
-            Weekly Alpha Recommendations &amp; Cross-Sectional Playbook (Mon–Fri Horizon)
+            <span id="wkPanelIcon">📅</span>
+            <span id="wkPanelTitleTxt">Weekly Alpha Recommendations &amp; Cross-Sectional Playbook (Mon–Fri Horizon)</span>
             <span class="panel-sub" id="wkHeaderSub">Qlib Multi-Factor Z-Scores · WorldQuant Alpha#101 · TTM Squeeze · Connors RSI(2) · HRP Risk-Parity Basket</span>
           </div>
           <span class="panel-chev">▼</span>
@@ -1325,34 +1355,34 @@
               </select>
             </label>
             <label>Tickers:
-              <input type="text" id="wkCustomSyms" value="NVDA, AAPL, MSFT, GOOG, AMZN, META, AMD, AVGO, TSLA, NFLX, JPM, V, LLY, UNH, COST, XOM" title="Comma-separated list of tickers to scan for the week">
+              <input type="text" id="wkCustomSyms" value="NVDA, AAPL, MSFT, GOOG, AMZN, META, AMD, AVGO, TSLA, NFLX, JPM, V, LLY, UNH, COST, XOM" title="Comma-separated list of tickers to scan">
             </label>
             <button class="btn" id="wkScanBtn" style="padding:5px 12px;font-size:12px">▶ Scan Weekly Picks</button>
             <span style="font-size:11px;color:var(--muted);margin-left:auto" id="wkStatusTxt">Scanning cross-sectional universe…</span>
           </div>
 
-          <!-- TOP 5 WEEKLY BUY CARDS -->
+          <!-- TOP 5 CARDS -->
           <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px;display:flex;justify-content:space-between;align-items:center">
-            <span>🏆 Top 5 Weekly Alpha Picks (Click Any Card to Load Full Chart &amp; Deep Dive)</span>
+            <span id="wkTopSectionTitle">🏆 Top 5 Weekly Alpha Picks (Click Any Card to Load Full Chart &amp; Deep Dive)</span>
             <span id="wkWindowBadge" class="badge b-blue">Mon–Fri 5-Day Horizon</span>
           </div>
           <div class="wk-top-grid" id="wkTopGrid">
             <div style="grid-column:1/-1;text-align:center;padding:18px;color:var(--muted);font-size:12px">Running cross-sectional weekly alpha scan across universe…</div>
           </div>
 
-          <!-- CORRELATION-PENALIZED RISK-PARITY PORTFOLIO BASKET -->
+          <!-- PORTFOLIO BASKET -->
           <div class="wk-basket-box" id="wkBasketBox" style="display:none">
             <div class="wk-basket-hdr">
               <div class="wk-basket-title">
-                <span>⚖️ Weekly Portfolio Basket Allocator</span>
-                <span class="badge b-purple">Correlation-Penalized Risk Parity (HRP-Style)</span>
+                <span id="wkBasketTitleTxt">⚖️ Weekly Portfolio Basket Allocator</span>
+                <span class="badge b-purple" id="wkBasketMethodBadge">Correlation-Penalized Risk Parity (HRP-Style)</span>
               </div>
               <div class="wk-basket-stats" id="wkBasketStats"></div>
             </div>
             <div class="wk-alloc-bar" id="wkAllocBar"></div>
             <div class="bt-table-wrap">
               <table class="bt-table">
-                <thead>
+                <thead id="wkBasketThead">
                   <tr>
                     <th>Pick</th>
                     <th>Setup Archetype</th>
@@ -1373,12 +1403,12 @@
           </div>
 
           <!-- FULL CROSS-SECTIONAL RANKING TABLE -->
-          <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">
+          <div id="wkTableSectionTitle" style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:7px">
             📊 Full Cross-Sectional Factor Ranking &amp; Weekly Floor Pivots
           </div>
           <div class="bt-table-wrap">
             <table class="bt-table">
-              <thead>
+              <thead id="wkMainThead">
                 <tr>
                   <th>Rank</th>
                   <th>Ticker</th>
@@ -1586,6 +1616,7 @@
 // ════════════════════════════════════════════════════════════════════════
 const S = {
   market: 'US',
+  horizonMode: 'swing',
   ticker: '',
   rawCandles: [],
   candles: [],
@@ -1598,6 +1629,7 @@ const S = {
   btResults: [],
   quant: {},
   proposal: null,
+  longtermData: null,
   gemKey: localStorage.getItem('ss_key') || '',
   gemModel: localStorage.getItem('ss_model') || 'gemini-2.5-pro',
   rfRate: parseFloat(localStorage.getItem('ss_rf')) || 4.25,
@@ -3231,7 +3263,7 @@ function buildTradeProposal() {
   const planCtx = { ticker, price, latr, atrPct, le20, lkama, lvwap, lstLine: lst.line, vp, quant, mcResult, horizon, bestBt, metaBoss, reclaimLevel };
   const execPlan = computeProposalExecutionPlan(signal, score, planCtx);
 
-  return {
+  const propObj = {
     signal, conviction, vClass, score,
     techScore: score,
     fundScore: null,
@@ -3243,6 +3275,10 @@ function buildTradeProposal() {
     catalysts: catalysts.slice(0, 5),
     risks: risks.slice(0, 5),
   };
+  if (S.horizonMode === 'longterm') {
+    applyLongTermProposalToObject(propObj, S.intel);
+  }
+  return propObj;
 }
 
 function computeProposalExecutionPlan(signal, dispScore, ctx) {
@@ -3372,12 +3408,28 @@ function computeProposalExecutionPlan(signal, dispScore, ctx) {
 }
 
 function renderProposal(p) {
+  const isLT = !!p.isLongTerm;
   const vb = document.getElementById('verdictBox');
   vb.className = 'verdict-box ' + p.vClass;
+  const vLbl = document.getElementById('verdictLbl');
+  if (vLbl) vLbl.textContent = isLT ? '1–3Y Compounder Verdict' : 'Action Proposal';
   document.getElementById('verdictSig').textContent = p.signal;
-  document.getElementById('verdictConf').textContent = p.fundScore != null
-    ? `Quantamental: ${p.score}/100 (Tech ${p.techScore} · Street ${p.fundScore}) · ${p.conviction}`
-    : `Quant Score: ${p.score}/100 · ${p.conviction}`;
+  document.getElementById('verdictConf').textContent = isLT
+    ? `Compounder: ${p.score}/100 · ${p.conviction}`
+    : (p.fundScore != null
+      ? `Quantamental: ${p.score}/100 (Tech ${p.techScore} · Street ${p.fundScore}) · ${p.conviction}`
+      : `Quant Score: ${p.score}/100 · ${p.conviction}`);
+
+  const propIcon = document.getElementById('propIcon');
+  const propTitle = document.getElementById('propTitleTxt');
+  const propSub = document.getElementById('propSub');
+  if (propIcon) propIcon.textContent = isLT ? '🏛️' : '🎯';
+  if (propTitle) propTitle.textContent = isLT
+    ? 'Long-Term Compounder Blueprint, 2-Stage DCF & 3-Tranche DCA'
+    : 'Executive Trade Proposal, Entry/Exit & Holding Horizon';
+  if (propSub) propSub.textContent = isLT
+    ? '5-Pillar ROIC/Growth/DCF Model · 1–3+ Year Secular Wealth Horizon'
+    : 'Algorithmic Multi-Factor + Gemini AI';
 
   const divBox = document.getElementById('quantStreetDivergenceBox');
   if (divBox) {
@@ -3398,23 +3450,56 @@ function renderProposal(p) {
 
   document.getElementById('pHorizon').textContent = p.horizon;
   document.getElementById('pHorizonSub').textContent = p.horizonSub;
-  document.getElementById('pRR').textContent = `${p.rr.toFixed(2)} : 1`;
 
+  const rrLblEl = document.getElementById('pRRLbl');
+  const rrSubEl = document.getElementById('pRRSub');
+  const pRREl = document.getElementById('pRR');
+  if (isLT && p.dcfFairValue != null) {
+    if (rrLblEl) rrLblEl.textContent = 'Intrinsic DCF Value';
+    pRREl.textContent = f$(p.dcfFairValue);
+    pRREl.style.color = (p.dcfUpsidePct || 0) >= 0 ? 'var(--green)' : 'var(--orange)';
+    if (rrSubEl) rrSubEl.textContent = `${fpct(p.dcfUpsidePct || 0, 1)} vs Spot · WACC ${p.waccPct}%`;
+  } else {
+    if (rrLblEl) rrLblEl.textContent = 'Risk / Reward';
+    pRREl.textContent = `${p.rr.toFixed(2)} : 1`;
+    pRREl.style.color = '';
+    if (rrSubEl) rrSubEl.textContent = 'To Base Target (TP2)';
+  }
+
+  const shLblEl = document.getElementById('pSharesLbl');
+  if (shLblEl) shLblEl.textContent = isLT ? 'Core DCA Allocation' : 'Suggested Position';
   const pSharesEl = document.getElementById('pShares');
   pSharesEl.textContent = p.sharesDisplay || `${p.recShares} sh (${f$(p.recDollars, 0)})`;
   pSharesEl.style.color = p.sharesColor || 'var(--green)';
   document.getElementById('pAlloc').textContent = p.allocDisplay || `${p.recPct.toFixed(1)}% of Portfolio · 1% Risk Cap`;
 
   const price = S.candles[S.candles.length - 1].close;
+  const tStopLbl = document.getElementById('tStopLbl');
+  const tTP1Lbl = document.getElementById('tTP1Lbl');
+  const tTP2Lbl = document.getElementById('tTP2Lbl');
+  const tTP3Lbl = document.getElementById('tTP3Lbl');
+
+  if (isLT) {
+    if (tStopLbl) tStopLbl.textContent = '🛡️ Secular Floor & T2/T3 DCA';
+    if (tTP1Lbl) tTP1Lbl.textContent = '⚖️ Bear Intrinsic DCF';
+    if (tTP2Lbl) tTP2Lbl.textContent = '🎯 Base Intrinsic DCF';
+    if (tTP3Lbl) tTP3Lbl.textContent = '🚀 3-Year Compounder Target';
+  } else {
+    if (tStopLbl) tStopLbl.textContent = '🛑 Stop-Loss (Invalidation)';
+    if (tTP1Lbl) tTP1Lbl.textContent = '🎯 Target 1 (Conservative)';
+    if (tTP2Lbl) tTP2Lbl.textContent = '🎯 Target 2 (Base Case)';
+    if (tTP3Lbl) tTP3Lbl.textContent = '🚀 Target 3 (Bull / Runner)';
+  }
+
   document.getElementById('tStop').textContent = `${f$(p.stopLoss)} (${fpct(((p.stopLoss - price) / price) * 100, 1)})`;
   const stopMetaEl = document.getElementById('tStopMeta');
   if (stopMetaEl && p.stopMeta) stopMetaEl.textContent = p.stopMeta;
   document.getElementById('tTP1').textContent = `${f$(p.tp1)} (${fpct(((p.tp1 - price) / price) * 100, 1)})`;
-  document.getElementById('tTP1Meta').textContent = `1.5R · ${p.pTP1}`;
+  document.getElementById('tTP1Meta').textContent = isLT ? p.pTP1 : `1.5R · ${p.pTP1}`;
   document.getElementById('tTP2').textContent = `${f$(p.tp2)} (${fpct(((p.tp2 - price) / price) * 100, 1)})`;
-  document.getElementById('tTP2Meta').textContent = `2.5R Base · ${p.pTP2}`;
+  document.getElementById('tTP2Meta').textContent = isLT ? p.pTP2 : `2.5R Base · ${p.pTP2}`;
   document.getElementById('tTP3').textContent = `${f$(p.tp3)} (${fpct(((p.tp3 - price) / price) * 100, 1)})`;
-  document.getElementById('tTP3Meta').textContent = `4.0R Runner · ${p.pTP3}`;
+  document.getElementById('tTP3Meta').textContent = isLT ? p.pTP3 : `4.0R Runner · ${p.pTP3}`;
 
   document.getElementById('catalysts').innerHTML = p.catalysts.map(c => `<li>${c}</li>`).join('');
   document.getElementById('risks').innerHTML = p.risks.map(r => `<li>${r}</li>`).join('');
@@ -3549,18 +3634,29 @@ function updateChartPriceLines(proposal) {
 
   if (!S.ind.sr || !proposal) return;
 
-  const entryLineTitle = proposal.execMode === 'WATCH_RECLAIM'
-    ? 'Reclaim Trigger'
-    : proposal.execMode === 'BEAR_DEFENSIVE'
-      ? 'Trim / Short'
-      : 'Ideal Entry';
+  let lines;
+  if (proposal.isLongTerm) {
+    lines = [
+      { price: proposal.tp3, color: '#a855f7', title: '3Y Target', style: LightweightCharts.LineStyle.Dashed },
+      { price: proposal.tp2, color: '#22c55e', title: 'Intrinsic DCF', style: LightweightCharts.LineStyle.Dashed },
+      { price: proposal.entryHigh, color: '#38bdf8', title: 'DCA T1 (40%)', style: LightweightCharts.LineStyle.Dotted },
+      { price: proposal.dcaT2Price, color: '#eab308', title: 'DCA T2 (35% · 50W)', style: LightweightCharts.LineStyle.SparseDotted },
+      { price: proposal.stopLoss, color: '#ef4444', title: '200W Thesis Floor', style: LightweightCharts.LineStyle.Dashed },
+    ];
+  } else {
+    const entryLineTitle = proposal.execMode === 'WATCH_RECLAIM'
+      ? 'Reclaim Trigger'
+      : proposal.execMode === 'BEAR_DEFENSIVE'
+        ? 'Trim / Short'
+        : 'Ideal Entry';
 
-  const lines = [
-    { price: proposal.tp2, color: '#22c55e', title: 'TP2 Target', style: LightweightCharts.LineStyle.Dashed },
-    { price: proposal.entryLow, color: proposal.execMode === 'WATCH_RECLAIM' ? '#f59e0b' : '#38bdf8', title: entryLineTitle, style: LightweightCharts.LineStyle.Dotted },
-    { price: S.computed.vp?.poc, color: '#eab308', title: 'Vol POC', style: LightweightCharts.LineStyle.SparseDotted },
-    { price: proposal.stopLoss, color: '#ef4444', title: 'Stop Loss', style: LightweightCharts.LineStyle.Dashed },
-  ];
+    lines = [
+      { price: proposal.tp2, color: '#22c55e', title: 'TP2 Target', style: LightweightCharts.LineStyle.Dashed },
+      { price: proposal.entryLow, color: proposal.execMode === 'WATCH_RECLAIM' ? '#f59e0b' : '#38bdf8', title: entryLineTitle, style: LightweightCharts.LineStyle.Dotted },
+      { price: S.computed.vp?.poc, color: '#eab308', title: 'Vol POC', style: LightweightCharts.LineStyle.SparseDotted },
+      { price: proposal.stopLoss, color: '#ef4444', title: 'Stop Loss', style: LightweightCharts.LineStyle.Dashed },
+    ];
+  }
   lines.forEach(l => {
     if (l.price != null && isFinite(l.price)) {
       S.priceLines.push(S.series.candle.createPriceLine({
@@ -3621,7 +3717,7 @@ function updateSidebar() {
     ${extHtml}
     <div class="score-box">
       <div class="score-top">
-        <span class="score-lbl">Composite Quant Score</span>
+        <span class="score-lbl">${S.horizonMode === 'longterm' ? '🏛️ 1–3Y Compounder' : 'Composite Quant Score'}</span>
         <span class="score-num" style="color:${scoreCol}">${proposal.score}/100 · ${proposal.signal}</span>
       </div>
       <div class="score-bar-bg">
@@ -3815,8 +3911,20 @@ function launchProposalCopilotAudit(mode = 'analyst') {
   const sym = S.ticker || 'NVDA';
   const sig = S.proposal?.signal || 'HOLD';
   const sc = S.proposal?.score ?? '—';
+  const isLT = S.horizonMode === 'longterm';
   setChatPersona(mode);
   toggleChatDrawer(true);
+
+  if (isLT) {
+    if (mode === 'debate') {
+      sendChatMessage(`Run an institutional Bull vs. Bear 1–3 Year Compounder debate on ${sym} (${sig}, ${sc}/100) across its Est. ROIC, 3Y revenue/operating margin durability, 2-Stage 10Y Intrinsic DCF valuation, and 3-Tranche DCA zones.`);
+    } else if (mode === 'devil') {
+      sendChatMessage(`Play Devil's Advocate on ${sym}'s Long-Term Compounder Thesis (${sig}, ${sc}/100): expose the biggest multi-year moat erosion, CapEx/FCF compression, WACC/DCF multiple contraction, and 200-Week SMA breakdown risks.`);
+    } else {
+      sendChatMessage(`Plot ${sym}'s 3-Year Target, Base Intrinsic DCF, and DCA Tranches on the chart, and run a deep 1–3 Year Long-Term Compounder audit of ${sym} (${sig}, ${sc}/100) across ROIC, Growth, 2-Stage DCF, and 3-Tranche DCA sizing.`);
+    }
+    return;
+  }
 
   if (mode === 'debate') {
     sendChatMessage(`Run an institutional Bull vs. Bear committee debate on ${sym} (${sig}, ${sc}/100) across its 1–8W technical regime, 7-strategy backtest, 12M Wall Street price targets, earnings revisions, and quarterly cash flow.`);
@@ -3867,6 +3975,54 @@ const MARKET_QUICK_TICKERS = {
   IN: ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'SBIN', 'NIFTY50'],
 };
 
+function runActiveHorizonScanner() {
+  return S.horizonMode === 'longterm' ? runLongTermScanner() : runWeeklyScanner();
+}
+
+function switchHorizon(mode, opts = {}) {
+  const target = mode === 'longterm' ? 'longterm' : 'swing';
+  const changed = S.horizonMode !== target;
+  S.horizonMode = target;
+
+  document.querySelectorAll('.hz-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.h === target);
+  });
+
+  const wkTopBtn = document.getElementById('weeklyTopBtn');
+  if (wkTopBtn) {
+    wkTopBtn.textContent = target === 'longterm' ? '🏛️ Long-Term Picks' : '📅 Weekly Picks';
+  }
+  const wkScanBtn = document.getElementById('wkScanBtn');
+  if (wkScanBtn && !wkScanBtn.disabled) {
+    wkScanBtn.textContent = target === 'longterm' ? '▶ Scan Compounders' : '▶ Scan Weekly Picks';
+  }
+
+  // Auto-calibrate chart timeframe (5Y Weekly vs 1Y Daily) & Monte Carlo horizon (252d vs 63d)
+  const targetRange = target === 'longterm' ? '5y' : '1y';
+  const rBtn = document.querySelector(`.rng[data-r="${targetRange}"]`);
+  if (rBtn && !opts.keepRange) {
+    document.querySelectorAll('.rng').forEach(x => x.classList.remove('active'));
+    rBtn.classList.add('active');
+  }
+  const mcDaysEl = document.getElementById('mcDays');
+  if (mcDaysEl && !opts.keepMcDays) {
+    mcDaysEl.value = target === 'longterm' ? '252' : '63';
+  }
+
+  if (target === 'longterm') {
+    switchIntelTab('longterm');
+  } else if (S.activeIntelTab === 'longterm') {
+    switchIntelTab('overview');
+  }
+
+  if (!opts.skipAnalyze && S.ticker) {
+    analyze();
+  }
+  if (!opts.skipScanner && changed) {
+    runActiveHorizonScanner();
+  }
+}
+
 function switchMarket(mkt) {
   const target = mkt === 'IN' ? 'IN' : 'US';
   S.market = target;
@@ -3889,9 +4045,12 @@ function switchMarket(mkt) {
   const tInput = document.getElementById('tickerInput');
   const acctEl = document.getElementById('acctSize');
   document.getElementById('acctCurrencyLbl').textContent = `Capital (${ccySym()}):`;
-  document.getElementById('wkAllocColHdr').textContent = `Allocation (${ccySym()})`;
-  document.getElementById('wkRiskColHdr').textContent = `Stop Risk (${ccySym()})`;
-  document.getElementById('wkRsColHdr').textContent = `RS vs ${benchName()} (1M)`;
+  const allocHdr = document.getElementById('wkAllocColHdr');
+  const riskHdr = document.getElementById('wkRiskColHdr');
+  const rsHdr = document.getElementById('wkRsColHdr');
+  if (allocHdr) allocHdr.textContent = `Allocation (${ccySym()})`;
+  if (riskHdr) riskHdr.textContent = `Stop Risk (${ccySym()})`;
+  if (rsHdr) rsHdr.textContent = `RS vs ${benchName()} (1M)`;
 
   if (target === 'IN') {
     tInput.placeholder = 'NSE Ticker (e.g. RELIANCE, TCS, HDFCBANK)';
@@ -3910,10 +4069,10 @@ function switchMarket(mkt) {
   wkSelect.value = defPreset;
   document.getElementById('wkCustomSyms').value = WEEKLY_PRESETS[defPreset];
 
-  // Switch active ticker to market flagship & run full analysis + weekly scan
+  // Switch active ticker to market flagship & run full analysis + active horizon scan
   tInput.value = target === 'IN' ? 'RELIANCE' : 'NVDA';
   analyze();
-  runWeeklyScanner();
+  runActiveHorizonScanner();
 }
 
 function selectWeeklyTicker(sym) {
@@ -4084,7 +4243,44 @@ async function runClientWeeklyScanFallback(symbols, capital) {
 function renderWeeklyScanner(data) {
   S.weeklyData = data;
   const bLbl = data.benchmark || benchName();
+
+  // Ensure Swing / Weekly Scanner headers are active
+  const pIcon = document.getElementById('wkPanelIcon');
+  const pTitle = document.getElementById('wkPanelTitleTxt');
+  const pSub = document.getElementById('wkHeaderSub');
+  const topTitle = document.getElementById('wkTopSectionTitle');
+  const bTitle = document.getElementById('wkBasketTitleTxt');
+  const bBadge = document.getElementById('wkBasketMethodBadge');
+  const bThead = document.getElementById('wkBasketThead');
+  const tTitle = document.getElementById('wkTableSectionTitle');
+  const mThead = document.getElementById('wkMainThead');
+
+  if (pIcon) pIcon.textContent = '📅';
+  if (pTitle) pTitle.textContent = 'Weekly Alpha Recommendations & Cross-Sectional Playbook (Mon–Fri Horizon)';
+  if (pSub) pSub.textContent = 'Qlib Multi-Factor Z-Scores · WorldQuant Alpha#101 · TTM Squeeze · Connors RSI(2) · HRP Risk-Parity Basket';
+  if (topTitle) topTitle.textContent = '🏆 Top 5 Weekly Alpha Picks (Click Any Card to Load Full Chart & Deep Dive)';
+  if (bTitle) bTitle.textContent = '⚖️ Weekly Portfolio Basket Allocator';
+  if (bBadge) { bBadge.textContent = 'Correlation-Penalized Risk Parity (HRP-Style)'; bBadge.className = 'badge b-purple'; }
+  if (bThead) {
+    bThead.innerHTML = `<tr>
+      <th>Pick</th><th>Setup Archetype</th><th>Alpha Score</th><th>Spot Price</th>
+      <th>Avg Basket Corr (ρ̄)</th><th>Optimal Weight</th><th>Suggested Shares</th>
+      <th id="wkAllocColHdr">Allocation (${ccySym()})</th><th>Weekly Stop-Loss</th>
+      <th>Friday Target (TP1)</th><th id="wkRiskColHdr">Stop Risk (${ccySym()})</th>
+    </tr>`;
+  }
+  if (tTitle) tTitle.textContent = '📊 Full Cross-Sectional Factor Ranking & Weekly Floor Pivots';
+  if (mThead) {
+    mThead.innerHTML = `<tr>
+      <th>Rank</th><th>Ticker</th><th>Price (1D / 5D)</th><th>Weekly Alpha</th><th>Action</th>
+      <th>Setup Archetype</th><th id="wkRsColHdr">RS vs ${bLbl} (1M)</th><th>WQ Alpha#101 · Vol Acc</th>
+      <th>RSI(14) / RSI(2)</th><th>TTM Squeeze</th><th>5D Walk-Fwd Win%</th>
+      <th>5D MC Odds &amp; ±1σ Cone</th><th>Weekly Pivots (S1 / P / R1)</th><th>Mon–Fri Entry · Stop · TP1</th>
+    </tr>`;
+  }
+
   document.getElementById('wkWindowBadge').textContent = `${data.week_window || 'Mon–Fri'} · ${bLbl} 5D: ${fpct(data.spy_ret_5d_pct || 0)}`;
+  document.getElementById('wkWindowBadge').className = 'badge b-blue';
   document.getElementById('wkStatusTxt').textContent = `Scanned ${data.universe_size} ${S.market === 'IN' ? 'NSE' : 'US'} tickers · Click any ticker to load chart`;
 
   // 1. Render Top 5 Weekly Cards
@@ -4206,7 +4402,391 @@ async function runWeeklyScanner() {
     statusEl.textContent = 'Weekly scan error: ' + err.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = '▶ Scan Weekly Picks';
+    btn.textContent = S.horizonMode === 'longterm' ? '▶ Scan Compounders' : '▶ Scan Weekly Picks';
+  }
+}
+
+function buildClientFallbackLongTerm(intel, candlesOpt) {
+  const cs = (candlesOpt && candlesOpt.length ? candlesOpt : S.candles) || [];
+  const ov = intel?.overview || {};
+  const an = intel?.analysis || {};
+  const prof = an.profitability || {};
+  const val = an.valuation || {};
+  const hd = intel?.holdings || {};
+  const spot = ov.regular_price || cs[cs.length - 1]?.close || 100;
+  const isIndia = (intel?.market || S.market) === 'IN';
+  const ccy = isIndia ? '₹' : '$';
+
+  const closes = cs.map(c => c.close);
+  const e20Arr = ema(closes, Math.min(20, Math.max(5, Math.floor(closes.length * 0.2))));
+  const e50Arr = ema(closes, Math.min(50, Math.max(10, Math.floor(closes.length * 0.45))));
+  const s200Arr = sma(closes, Math.min(200, Math.max(20, Math.floor(closes.length * 0.85))));
+  const ema20w = e20Arr[e20Arr.length - 1] ?? spot;
+  const ema50w = e50Arr[e50Arr.length - 1] ?? spot * 0.94;
+  const sma200w = s200Arr[s200Arr.length - 1] ?? spot * 0.82;
+  const w52Hi = ov.week_52_high || (closes.length ? Math.max(...closes) : spot * 1.1);
+  const pctOffHi = Number((((spot - w52Hi) / Math.max(w52Hi, 1e-6)) * 100).toFixed(1));
+
+  const yrs = Math.max(1, closes.length / (S.barsPerYear || 52));
+  const cagr5y = closes.length > 20 ? Number((((spot / Math.max(closes[0], 1e-6)) ** (1 / Math.min(5, yrs)) - 1) * 100).toFixed(1)) : 12.0;
+
+  const roe = prof.roe_pct ?? 20.0;
+  const roicEst = Number((roe * 0.82).toFixed(1));
+  const om = prof.operating_margin_pct ?? 22.0;
+  const gm = prof.gross_margin_pct ?? 52.0;
+  const revG = prof.revenue_growth_yoy_pct ?? Math.max(6, cagr5y * 0.85);
+  const rf = isIndia ? 0.0675 : 0.0425;
+  const beta = clamp(ov.beta || 1.05, 0.7, 1.6);
+  const wacc = clamp(rf + beta * 0.048, isIndia ? 0.095 : 0.075, 0.135);
+  const termG = isIndia ? 0.045 : 0.03;
+  const g5y = clamp(revG / 100, 0.04, 0.22);
+
+  const pe = val.pe_fwd || val.pe_ttm || ov.pe_fwd || ov.pe_ttm || 22;
+  const eps = ov.eps_fwd || ov.eps_ttm || (spot / Math.max(pe, 8));
+  const ownerCf = Math.max(0.01, eps * 0.85);
+
+  const calc2Stage = (cf0, g1, disc, gt) => {
+    let pv = 0, cf = cf0;
+    for (let yr = 1; yr <= 10; yr++) {
+      const gy = yr <= 5 ? g1 : (g1 - ((yr - 5) / 5) * (g1 - gt));
+      cf *= (1 + gy);
+      pv += cf / ((1 + disc) ** yr);
+    }
+    const tv = (cf * (1 + gt)) / Math.max(disc - gt, 0.025);
+    return Math.max(spot * 0.3, pv + tv / ((1 + disc) ** 10));
+  };
+
+  let dcfBear = Number(calc2Stage(ownerCf * 0.92, g5y * 0.72, wacc + 0.0125, termG - 0.005).toFixed(2));
+  let dcfBase = Number(calc2Stage(ownerCf, g5y, wacc, termG).toFixed(2));
+  let dcfBull = Number(calc2Stage(ownerCf * 1.06, Math.min(0.26, g5y * 1.18), Math.max(0.065, wacc - 0.01), termG + 0.005).toFixed(2));
+  if ((an.analyst_count || 0) >= 3 && an.price_targets?.mean) {
+    dcfBase = Number((0.65 * dcfBase + 0.35 * an.price_targets.mean).toFixed(2));
+    dcfBear = Number(Math.min(dcfBase * 0.86, 0.65 * dcfBear + 0.35 * (an.price_targets.low || dcfBear)).toFixed(2));
+    dcfBull = Number(Math.max(dcfBase * 1.18, 0.65 * dcfBull + 0.35 * (an.price_targets.high || dcfBull)).toFixed(2));
+  }
+  const dcfUpside = Number((((dcfBase - spot) / spot) * 100).toFixed(1));
+  const mosPct = Number((((dcfBase - spot) / Math.max(dcfBase, 1e-6)) * 100).toFixed(1));
+  const target3y = Number((Math.max(spot * 0.75, dcfBase * ((1 + Math.max(0.085, wacc)) ** 2.1))).toFixed(2));
+  const cagr3y = Number(((((target3y / spot) ** (1 / 3) - 1) * 100) + (ov.dividend_yield_pct || 0)).toFixed(1));
+
+  const pQual = Math.round(clamp(54 + (roicEst >= 20 ? 18 : roicEst >= 12 ? 10 : -5) + (om >= 22 ? 8 : 3), 25, 96));
+  const pGrow = Math.round(clamp(52 + (revG >= 18 ? 22 : revG >= 10 ? 12 : 2), 25, 95));
+  const pVal = Math.round(clamp(52 + (dcfUpside >= 20 ? 20 : dcfUpside >= 6 ? 10 : dcfUpside <= -15 ? -14 : 0), 20, 94));
+  const pSec = Math.round(clamp(58 + (ema50w >= sma200w * 0.98 ? 14 : -8) + (pctOffHi <= -10 && pctOffHi >= -32 ? 10 : 0), 25, 94));
+  const pCap = Math.round(clamp(56 + ((ov.dividend_yield_pct || 0) >= 1.5 ? 10 : 4) + ((hd.institutions_pct || 50) >= 55 ? 8 : 2), 25, 92));
+  const ltScore = Math.round(clamp(0.30 * pQual + 0.25 * pGrow + 0.20 * pVal + 0.15 * pSec + 0.10 * pCap, 18, 96));
+
+  let verdict = 'HOLD / CORE WATCH', vClass = 'hold', conviction = 'Wait for Margin of Safety';
+  if (ltScore >= 74 && dcfUpside >= 8) { verdict = 'CORE ACCUMULATE'; vClass = 'buy'; conviction = 'High Multi-Year Compounder'; }
+  else if (ltScore >= 62) { verdict = 'BUY / DCA ON DIPS'; vClass = 'buy'; conviction = 'Quality GARP / Secular Growth'; }
+  else if (ltScore <= 38) { verdict = 'TRIM / FULLY VALUED'; vClass = 'sell'; conviction = 'Valuation Stretched vs. DCF'; }
+
+  const archetype = pQual >= 76 && pGrow >= 70 ? '🏰 WIDE-MOAT COMPOUNDER' : pVal >= 68 ? '💎 GARP VALUE LEADER' : '🚀 SECULAR GROWTH LEADER';
+  const onSale = dcfUpside >= 12 || pctOffHi <= -12;
+  const t1Lo = Number((onSale ? spot * 0.97 : Math.min(spot * 0.96, ema20w * 0.98)).toFixed(2));
+  const t1Hi = Number((onSale ? spot * 1.01 : Math.min(spot, ema20w * 1.01)).toFixed(2));
+  const t2Anchor = Math.min(t1Lo * 0.92, Math.max(ema50w, spot * 0.86));
+  const t2Lo = Number((t2Anchor * 0.985).toFixed(2)), t2Hi = Number((t2Anchor * 1.015).toFixed(2));
+  const t3Anchor = Math.min(t2Lo * 0.90, Math.max(sma200w, dcfBear, spot * 0.74));
+  const t3Lo = Number((t3Anchor * 0.98).toFixed(2)), t3Hi = Number((t3Anchor * 1.02).toFixed(2));
+  const thesisFloor = Number(Math.min(t3Lo * 0.90, sma200w * 0.92, spot * 0.72).toFixed(2));
+
+  return {
+    horizon: '1–3+ Years (Secular Compounding)',
+    score: ltScore,
+    verdict,
+    vClass,
+    conviction,
+    archetype,
+    pillars: { quality_moat: pQual, growth_revisions: pGrow, dcf_valuation: pVal, secular_structure: pSec, capital_smart_money: pCap },
+    metrics: {
+      roic_est_pct: roicEst, roe_pct: roe, gross_margin_pct: gm, operating_margin_pct: om,
+      fcf_margin_pct: Number((om * 0.78).toFixed(1)), fcf_yield_pct: Number((100 / Math.max(pe, 10) * 0.85).toFixed(2)),
+      rev_cagr_3y_pct: Number(revG.toFixed(1)), total_shareholder_yield_pct: Number(((ov.dividend_yield_pct || 0) + 0.8).toFixed(2)),
+      eff_peg: Number((pe / Math.max(revG, 6)).toFixed(2)), pe_fwd: Number(pe.toFixed(1)),
+      cagr_5y_pct: cagr5y, sharpe_5y: Number((S.quant?.sharpe || 0.75).toFixed(2)),
+      pct_off_52w_high: pctOffHi, ema20w: Number(ema20w.toFixed(2)), ema50w: Number(ema50w.toFixed(2)), sma200w: Number(sma200w.toFixed(2)),
+    },
+    dcf: {
+      wacc_pct: Number((wacc * 100).toFixed(2)), stage1_growth_5y_pct: Number((g5y * 100).toFixed(1)),
+      terminal_growth_pct: Number((termG * 100).toFixed(1)), owner_cf_per_share: Number(ownerCf.toFixed(2)),
+      bear_value: dcfBear, intrinsic_fair_value: dcfBase, bull_value: dcfBull,
+      dcf_upside_pct: dcfUpside, margin_of_safety_pct: mosPct, target_3y: target3y, implied_3y_cagr_pct: cagr3y,
+    },
+    dca_plan: {
+      is_immediate_value_window: onSale,
+      blended_avg_cost: Number((0.40 * ((t1Lo + t1Hi) / 2) + 0.35 * ((t2Lo + t2Hi) / 2) + 0.25 * ((t3Lo + t3Hi) / 2)).toFixed(2)),
+      thesis_invalidation_price: thesisFloor,
+      tranches: [
+        { tranche: 1, weight_pct: 40, label: 'Tranche 1 (40% · Core Starter)', zone: [t1Lo, t1Hi], trigger: onSale ? 'Active Value Window — Deploy 40% Starter Now' : '20-Week EMA Pullback Starter' },
+        { tranche: 2, weight_pct: 35, label: 'Tranche 2 (35% · 50W EMA / Support)', zone: [t2Lo, t2Hi], trigger: `Add near 50-Week EMA (${ccy}${ema50w.toFixed(2)})` },
+        { tranche: 3, weight_pct: 25, label: 'Tranche 3 (25% · Secular 200W / Bear DCF)', zone: [t3Lo, t3Hi], trigger: `Deep Value Floor (${ccy}${sma200w.toFixed(2)} / Bear DCF)` },
+      ],
+      invalidation_rules: [
+        `Structural Secular Breakdown: Weekly close below 200-Week SMA / Thesis Floor (${ccy}${thesisFloor.toFixed(2)}) accompanied by deteriorating fundamentals.`,
+        'Earnings & Moat Erosion: 2 consecutive quarters of YoY revenue contraction or negative 90-day consensus EPS revisions.',
+        'Capital & Margin Decay: Operating margin compression > 400 bps or ROIC falling below WACC without clear ROI visibility.',
+      ],
+    },
+    catalysts: [
+      `Capital Efficiency & Moat: Est. ROIC of ${roicEst}% with ${om.toFixed(1)}% operating margin supports multi-year intrinsic compounding.`,
+      `2-Stage 10Y Intrinsic DCF: Fair Value estimated at ${ccy}${dcfBase.toFixed(2)} (${fpct(dcfUpside, 1)} vs. spot) with a 3-Year Target of ${ccy}${target3y.toFixed(2)} (${fpct(cagr3y, 1)}/yr CAGR).`,
+      ...(pctOffHi <= -10 ? [`Secular Pullback Window: Trading ${pctOffHi}% off 52W highs, enabling disciplined 3-Tranche DCA accumulation.`] : []),
+    ],
+    risks: [
+      ...(dcfUpside < 0 ? [`Valuation Multiple Premium: Spot trades ${Math.abs(dcfUpside).toFixed(1)}% above Base Intrinsic DCF (${ccy}${dcfBase.toFixed(2)}); stage entries on dips.`] : []),
+      `Secular Thesis Guardrail: Monitor weekly closes relative to the 200-Week SMA floor (${ccy}${thesisFloor.toFixed(2)}) and quarterly FCF conversion.`,
+    ],
+  };
+}
+
+async function runClientLongTermScanFallback(symbols, capital) {
+  const cleanSyms = [...new Set(symbols.map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, 16);
+  const candidates = [];
+  await Promise.all(cleanSyms.map(async sym => {
+    try {
+      const st = await loadStock(sym, '5y', '1wk');
+      if (!st || st.candles.length < 15) return;
+      const last = st.candles[st.candles.length - 1];
+      const miniIntel = {
+        symbol: sym,
+        market: S.market,
+        overview: {
+          symbol: sym, name: st.meta.longName || sym, regular_price: last.close,
+          pe_ttm: st.meta.trailingPE, pe_fwd: st.meta.forwardPE, eps_ttm: st.meta.eps,
+          dividend_yield_pct: st.meta.dividendYield, week_52_high: st.meta.fiftyTwoWeekHigh,
+          week_52_low: st.meta.fiftyTwoWeekLow, beta: st.meta.beta || 1.05,
+        },
+        analysis: { profitability: {}, valuation: { pe_ttm: st.meta.trailingPE, pe_fwd: st.meta.forwardPE } },
+        holdings: { institutions_pct: 60 },
+      };
+      const lt = buildClientFallbackLongTerm(miniIntel, st.candles);
+      candidates.push({
+        symbol: sym,
+        name: st.meta.longName || sym,
+        price: Number(last.close.toFixed(2)),
+        pe_fwd: lt.metrics.pe_fwd,
+        eff_peg: lt.metrics.eff_peg,
+        roic_est_pct: lt.metrics.roic_est_pct,
+        roe_pct: lt.metrics.roe_pct,
+        operating_margin_pct: lt.metrics.operating_margin_pct,
+        rev_growth_pct: lt.metrics.rev_cagr_3y_pct,
+        shareholder_yield_pct: lt.metrics.total_shareholder_yield_pct,
+        cagr_5y_pct: lt.metrics.cagr_5y_pct,
+        sharpe_5y: lt.metrics.sharpe_5y,
+        pct_off_52w_high: lt.metrics.pct_off_52w_high,
+        lt_score: lt.score,
+        lt_verdict: lt.verdict,
+        archetype: lt.archetype,
+        pillars: lt.pillars,
+        dcf: lt.dcf,
+        dca_plan: lt.dca_plan,
+      });
+    } catch {}
+  }));
+  candidates.sort((a, b) => (b.lt_score - a.lt_score) || ((b.dcf.implied_3y_cagr_pct || 0) - (a.dcf.implied_3y_cagr_pct || 0)));
+  candidates.forEach((c, i) => { c.rank = i + 1; });
+
+  const top5 = candidates.slice(0, 5);
+  const rawW = top5.map(c => Math.pow(Math.max(5, c.lt_score - 40), 1.2));
+  const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
+  let totAlloc = 0, totT1 = 0, wtCagr = 0, wtRoic = 0;
+  const allocations = top5.map((c, i) => {
+    const w = rawW[i] / sumW;
+    const fullSh = Math.max(1, Math.floor((capital * w) / c.price));
+    const alloc = Number((fullSh * c.price).toFixed(2));
+    const t1Sh = Math.max(1, Math.round(fullSh * 0.40));
+    const t1Dol = Number((t1Sh * c.price).toFixed(2));
+    totAlloc += alloc; totT1 += t1Dol;
+    wtCagr += w * (c.dcf.implied_3y_cagr_pct || 10);
+    wtRoic += w * (c.roic_est_pct || 18);
+    return {
+      rank: i + 1, symbol: c.symbol, name: c.name, archetype: c.archetype,
+      lt_score: c.lt_score, price: c.price, weight_pct: Number((w * 100).toFixed(1)),
+      full_shares: fullSh, t1_starter_shares: t1Sh, alloc_dollars: alloc, t1_dollars: t1Dol,
+      t1_zone: c.dca_plan.tranches[0].zone, intrinsic_dcf: c.dcf.intrinsic_fair_value,
+      target_3y: c.dcf.target_3y, implied_3y_cagr_pct: c.dcf.implied_3y_cagr_pct,
+      thesis_floor: c.dca_plan.thesis_invalidation_price,
+    };
+  });
+  return {
+    horizon_window: '1–3+ Year Secular Compounding',
+    benchmark: benchName(),
+    universe_size: candidates.length,
+    capital,
+    top_picks: top5,
+    portfolio_basket: {
+      capital, allocated_dollars: totAlloc, tranche1_deploy_now_dollars: totT1,
+      dca_dry_powder_dollars: Math.max(0, capital - totT1),
+      weighted_roic_pct: Number(wtRoic.toFixed(1)),
+      expected_3y_cagr_pct: Number(wtCagr.toFixed(1)),
+      projected_3y_portfolio_value: Math.round(totAlloc * ((1 + wtCagr / 100) ** 3) + Math.max(0, capital - totAlloc)),
+      allocations,
+    },
+    rankings: candidates,
+  };
+}
+
+function renderLongTermScanner(data) {
+  S.longtermData = data;
+  const pIcon = document.getElementById('wkPanelIcon');
+  const pTitle = document.getElementById('wkPanelTitleTxt');
+  const pSub = document.getElementById('wkHeaderSub');
+  const topTitle = document.getElementById('wkTopSectionTitle');
+  const wBadge = document.getElementById('wkWindowBadge');
+  const bTitle = document.getElementById('wkBasketTitleTxt');
+  const bBadge = document.getElementById('wkBasketMethodBadge');
+  const bThead = document.getElementById('wkBasketThead');
+  const tTitle = document.getElementById('wkTableSectionTitle');
+  const mThead = document.getElementById('wkMainThead');
+
+  if (pIcon) pIcon.textContent = '🏛️';
+  if (pTitle) pTitle.textContent = 'Long-Term Secular Compounders & Core Wealth Playbook (1–3+ Year Horizon)';
+  if (pSub) pSub.textContent = 'ROIC & Moat (30%) · 3Y Growth & Revisions (25%) · 2-Stage 10Y Intrinsic DCF (20%) · Secular 50W/200W Structure (15%) · Shareholder Yield (10%)';
+  if (topTitle) topTitle.textContent = '🏆 Top 5 Multi-Year Secular Compounders (Click Any Card to Load 5Y Chart & DCF Blueprint)';
+  if (wBadge) { wBadge.textContent = '🏛️ 1–3+ Year Wealth Horizon'; wBadge.className = 'badge b-green'; }
+  document.getElementById('wkStatusTxt').textContent = `Scanned ${data.universe_size} ${S.market === 'IN' ? 'NSE' : 'US'} compounders across 5 pillars & 2-Stage DCF`;
+
+  // 1. Top 5 Compounder Cards
+  const top5 = data.top_picks || [];
+  document.getElementById('wkTopGrid').innerHTML = top5.map(c => {
+    const sc = c.lt_score;
+    const scCol = sc >= 74 ? 'b-green' : sc >= 62 ? 'b-blue' : 'b-yellow';
+    const dcf = c.dcf || {};
+    const t1 = c.dca_plan?.tranches?.[0]?.zone || [c.price * 0.97, c.price];
+    const upside = dcf.dcf_upside_pct || 0;
+    return `
+      <div class="wk-pick-card" onclick="selectWeeklyTicker('${c.symbol}')" title="Click to load ${c.symbol} 5Y Weekly Chart & Full DCF/DCA Blueprint">
+        <div class="wk-pick-hdr">
+          <div class="wk-rank-sym"><span class="wk-rank-pill">#${c.rank}</span> ${c.symbol}</div>
+          <span class="wk-score-pill ${scCol}">${sc}/100</span>
+        </div>
+        <div class="wk-name">${c.name}</div>
+        <div style="margin:2px 0"><span class="badge b-green">${c.archetype}</span></div>
+        <div class="wk-price-line">
+          <span class="wk-spot">${f$(c.price)}</span>
+          <span style="font-size:11px;font-weight:700;color:${(c.pct_off_52w_high || 0) <= -10 ? 'var(--accent)' : 'var(--muted)'}">${fpct(c.pct_off_52w_high || 0, 1)} vs 52W Hi</span>
+        </div>
+        <div class="wk-kv"><span>Intrinsic DCF</span><strong style="color:${upside >= 0 ? 'var(--green)' : 'var(--orange)'}">${f$(dcf.intrinsic_fair_value)} (${fpct(upside, 1)})</strong></div>
+        <div class="wk-kv"><span>3-Year Target</span><strong style="color:var(--purple)">${f$(dcf.target_3y)} (${fpct(dcf.implied_3y_cagr_pct, 1)}/yr)</strong></div>
+        <div class="wk-kv"><span>ROIC / Op Margin</span><strong>${c.roic_est_pct != null ? c.roic_est_pct + '%' : (c.roe_pct != null ? c.roe_pct + '% ROE' : 'N/A')} · ${c.operating_margin_pct != null ? c.operating_margin_pct.toFixed(1) + '%' : 'N/A'}</strong></div>
+        <div class="wk-kv"><span>DCA Tranche 1 (40%)</span><strong style="color:var(--accent)">${f$(t1[0])} – ${f$(t1[1])}</strong></div>
+        <div class="wk-kv"><span>200W Thesis Floor</span><strong style="color:var(--red)">${f$(c.dca_plan?.thesis_invalidation_price)}</strong></div>
+        <div class="wk-rat">Pillars: Moat <strong>${c.pillars.quality_moat}</strong> · Growth <strong>${c.pillars.growth_revisions}</strong> · DCF <strong>${c.pillars.dcf_valuation}</strong> · Verdict: <strong>${c.lt_verdict}</strong></div>
+      </div>
+    `;
+  }).join('');
+
+  // 2. Core Wealth Portfolio Basket (3-Tranche DCA)
+  const b = data.portfolio_basket;
+  if (b && b.allocations && b.allocations.length) {
+    document.getElementById('wkBasketBox').style.display = '';
+    if (bTitle) bTitle.textContent = '🏛️ Core Wealth Compounder Portfolio Allocator';
+    if (bBadge) { bBadge.textContent = 'Quality-Weighted 3-Tranche DCA (40% / 35% / 25%)'; bBadge.className = 'badge b-green'; }
+    document.getElementById('wkBasketStats').innerHTML = `
+      <span>Core Target: <strong>${f$(b.allocated_dollars, 0)}</strong></span>
+      <span>Deploy Now (40% T1): <strong style="color:var(--accent)">${f$(b.tranche1_deploy_now_dollars, 0)}</strong></span>
+      <span>DCA Dry Powder (T2/T3): <strong>${f$(b.dca_dry_powder_dollars, 0)}</strong></span>
+      <span>Avg ROIC: <strong style="color:var(--green)">${b.weighted_roic_pct}%</strong></span>
+      <span>Projected 3Y Value: <strong style="color:var(--purple)">${f$(b.projected_3y_portfolio_value, 0)} (${fpct(b.expected_3y_cagr_pct, 1)}/yr)</strong></span>
+    `;
+    const segColors = ['#10b981', '#38bdf8', '#a855f7', '#f59e0b', '#06b6d4'];
+    document.getElementById('wkAllocBar').innerHTML = b.allocations.map((a, i) => `
+      <div class="wk-alloc-seg" style="width:${a.weight_pct}%;background:${segColors[i % segColors.length]}" title="${a.symbol}: ${a.weight_pct}% (${f$(a.alloc_dollars, 0)})"></div>
+    `).join('');
+
+    if (bThead) {
+      bThead.innerHTML = `<tr>
+        <th>Core Pick</th><th>Compounder Archetype</th><th>Score</th><th>Spot Price</th>
+        <th>Portfolio Wt</th><th>Now: T1 (40%)</th><th>Full Core Shares</th>
+        <th>Full Core (${ccySym()})</th><th>Base Intrinsic DCF</th><th>3-Year Target (CAGR)</th><th>200W Thesis Floor</th>
+      </tr>`;
+    }
+    document.getElementById('wkBasketBody').innerHTML = b.allocations.map((a, i) => `
+      <tr style="cursor:pointer" onclick="selectWeeklyTicker('${a.symbol}')">
+        <td><span class="strat-dot" style="background:${segColors[i % segColors.length]}"></span><strong>#${a.rank} ${a.symbol}</strong> <span style="color:var(--dim);font-size:10.5px">${a.name}</span></td>
+        <td><span class="badge b-green">${a.archetype}</span></td>
+        <td style="font-weight:800;color:var(--green)">${a.lt_score}/100</td>
+        <td>${f$(a.price)}</td>
+        <td style="font-weight:800;color:var(--accent)">${a.weight_pct.toFixed(1)}%</td>
+        <td style="font-weight:800;color:var(--accent)">${a.t1_starter_shares} sh <span style="font-size:10px;color:var(--muted)">(${f$(a.t1_dollars, 0)})</span></td>
+        <td style="font-weight:700">${a.full_shares} sh</td>
+        <td style="font-weight:700;color:var(--green)">${f$(a.alloc_dollars, 0)}</td>
+        <td style="color:var(--green);font-weight:700">${f$(a.intrinsic_dcf)}</td>
+        <td style="color:var(--purple);font-weight:700">${f$(a.target_3y)} <span style="font-size:10px">(${fpct(a.implied_3y_cagr_pct, 1)}/yr)</span></td>
+        <td style="color:var(--red)">${f$(a.thesis_floor)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // 3. Full Cross-Sectional Compounder & DCF Table
+  if (tTitle) tTitle.textContent = '📊 Full Cross-Sectional Secular Compounder, ROIC & 2-Stage DCF Ranking';
+  if (mThead) {
+    mThead.innerHTML = `<tr>
+      <th>Rank</th><th>Ticker</th><th>Spot (vs 52W Hi)</th><th>Compounder</th><th>Verdict</th>
+      <th>Archetype</th><th>ROIC / OpMgn</th><th>Rev Growth</th><th>Fwd P/E · PEG</th>
+      <th>Sh. Yield</th><th>5Y CAGR (Sharpe)</th><th>Intrinsic DCF (Upside)</th>
+      <th>3Y Target (CAGR)</th><th>3-Tranche DCA (T1 / T2 / Floor)</th>
+    </tr>`;
+  }
+  document.getElementById('wkTableBody').innerHTML = (data.rankings || []).map(c => {
+    const vBadge = c.lt_verdict.includes('ACCUMULATE') ? 'b-green' : c.lt_verdict.includes('BUY') ? 'b-blue' : c.lt_verdict.includes('HOLD') ? 'b-yellow' : 'b-red';
+    const dcf = c.dcf || {};
+    const tr = c.dca_plan?.tranches || [];
+    const t1 = tr[0]?.zone?.[0] ?? c.price;
+    const t2 = tr[1]?.zone?.[0] ?? c.price * 0.9;
+    const flr = c.dca_plan?.thesis_invalidation_price ?? c.price * 0.75;
+    return `
+      <tr style="cursor:pointer" onclick="selectWeeklyTicker('${c.symbol}')">
+        <td><strong>#${c.rank}</strong></td>
+        <td><strong style="color:var(--accent)">${c.symbol}</strong><div style="font-size:9.5px;color:var(--dim)">${c.market_cap_fmt || ''}</div></td>
+        <td>${f$(c.price)} <span style="color:${(c.pct_off_52w_high || 0) <= -10 ? 'var(--accent)' : 'var(--muted)'};font-size:10.5px">(${fpct(c.pct_off_52w_high || 0, 1)})</span></td>
+        <td style="font-weight:800;color:${c.lt_score >= 65 ? 'var(--green)' : c.lt_score <= 42 ? 'var(--red)' : 'var(--yellow)'}">${c.lt_score}/100</td>
+        <td><span class="badge ${vBadge}">${c.lt_verdict}</span></td>
+        <td>${c.archetype}</td>
+        <td><strong>${c.roic_est_pct != null ? c.roic_est_pct + '%' : (c.roe_pct != null ? c.roe_pct + '%' : 'N/A')}</strong> · ${c.operating_margin_pct != null ? c.operating_margin_pct.toFixed(1) + '%' : '—'}</td>
+        <td style="color:${(c.rev_growth_pct || 0) >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700">${c.rev_growth_pct != null ? fpct(c.rev_growth_pct, 1) : 'N/A'}</td>
+        <td>${c.pe_fwd != null ? c.pe_fwd + 'x' : '—'} · <strong>${c.eff_peg != null ? c.eff_peg + 'x' : '—'}</strong></td>
+        <td>${c.shareholder_yield_pct != null ? fpct(c.shareholder_yield_pct, 2) : '—'}</td>
+        <td>${c.cagr_5y_pct != null ? fpct(c.cagr_5y_pct, 1) : '—'} <span style="color:var(--dim);font-size:10px">(${c.sharpe_5y ?? '—'})</span></td>
+        <td style="font-weight:700;color:${(dcf.dcf_upside_pct || 0) >= 0 ? 'var(--green)' : 'var(--orange)'}">${f$(dcf.intrinsic_fair_value)} (${fpct(dcf.dcf_upside_pct, 1)})</td>
+        <td style="font-weight:700;color:var(--purple)">${f$(dcf.target_3y)} (${fpct(dcf.implied_3y_cagr_pct, 1)}/yr)</td>
+        <td style="font-size:11px"><span style="color:var(--accent)">${f$(t1)}</span> · <span style="color:var(--yellow)">${f$(t2)}</span> · <span style="color:var(--red)">${f$(flr)}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function runLongTermScanner() {
+  const btn = document.getElementById('wkScanBtn');
+  const statusEl = document.getElementById('wkStatusTxt');
+  const preset = document.getElementById('wkPreset').value;
+  const customInput = document.getElementById('wkCustomSyms').value.trim();
+  const acct = parseFloat(document.getElementById('acctSize').value) || (S.market === 'IN' ? 500000 : 25000);
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Modeling DCF…';
+  statusEl.textContent = `Running 5-Pillar ROIC, 3Y Growth & 2-Stage 10Y Intrinsic DCF scan (${S.market === 'IN' ? 'NSE India' : 'US Market'})…`;
+
+  try {
+    const apiBase = (window.location.protocol === 'file:') ? 'http://127.0.0.1:8765' : window.location.origin;
+    const url = `${apiBase}/api/longterm-scan?market=${encodeURIComponent(S.market)}&preset=${encodeURIComponent(preset)}&symbols=${encodeURIComponent(customInput)}&capital=${acct}&_=${Date.now()}`;
+    let data = null;
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      if (r.ok) data = await r.json();
+    } catch {}
+    if (!data || !data.rankings) {
+      const syms = customInput.split(',').map(s => s.trim()).filter(Boolean);
+      data = await runClientLongTermScanFallback(syms, acct);
+    }
+    if (S.horizonMode === 'longterm') renderLongTermScanner(data);
+    else S.longtermData = data;
+  } catch (err) {
+    statusEl.textContent = 'Long-term compounder scan error: ' + err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = S.horizonMode === 'longterm' ? '▶ Scan Compounders' : '▶ Scan Weekly Picks';
   }
 }
 
@@ -4827,11 +5407,264 @@ function renderIntelligenceHub(intel) {
 
   // 8. Render Tab 7: NEWS & WIRE
   renderIntelNewsPane(intel);
+
+  // 9. Render Tab 8: LONG-TERM COMPOUNDER, 2-STAGE DCF & 3-TRANCHE DCA
+  renderIntelLongTermPane(intel);
+}
+
+function renderIntelLongTermPane(intel) {
+  const ltEl = document.getElementById('intelPane-longterm');
+  if (!ltEl || !intel) return;
+  const lt = intel.long_term || buildClientFallbackLongTerm(intel);
+  intel.long_term = lt;
+
+  const ov = intel.overview || {};
+  const an = intel.analysis || {};
+  const pt = an.price_targets || {};
+  const spot = S.candles?.[S.candles.length - 1]?.close || ov.regular_price || pt.current || 100;
+  const acct = parseFloat(document.getElementById('acctSize')?.value) || (S.market === 'IN' ? 500000 : 25000);
+  const coreWt = clamp(0.10 + Math.max(0, (lt.score || 50) - 50) * 0.0025, 0.10, 0.22);
+  const coreBudget = acct * coreWt;
+
+  const m = lt.metrics || {};
+  const dcf = lt.dcf || {};
+  const dca = lt.dca_plan || {};
+  const pil = lt.pillars || {};
+
+  const vBadge = lt.vClass === 'buy' ? 'b-green' : lt.vClass === 'sell' ? 'b-red' : 'b-yellow';
+  const pillarRows = [
+    ['🏰 Quality, Moat & Fortress Balance Sheet (30% Wt)', pil.quality_moat ?? 60, `ROIC ${m.roic_est_pct != null ? m.roic_est_pct + '%' : 'N/A'} · Op Margin ${m.operating_margin_pct != null ? m.operating_margin_pct.toFixed(1) + '%' : 'N/A'}`],
+    ['🚀 Multi-Year Growth Durability & Revisions (25% Wt)', pil.growth_revisions ?? 58, `3Y Rev Growth ${m.rev_cagr_3y_pct != null ? fpct(m.rev_cagr_3y_pct, 1) : 'N/A'} · FCF Margin ${m.fcf_margin_pct != null ? m.fcf_margin_pct + '%' : 'N/A'}`],
+    ['⚖️ 2-Stage 10Y Intrinsic DCF & Margin of Safety (20% Wt)', pil.dcf_valuation ?? 55, `MoS ${fpct(dcf.margin_of_safety_pct || 0, 1)} · PEG ${m.eff_peg != null ? m.eff_peg + 'x' : 'N/A'}`],
+    ['📐 Secular Weekly 50W / 200W Structure (15% Wt)', pil.secular_structure ?? 60, `5Y CAGR ${m.cagr_5y_pct != null ? fpct(m.cagr_5y_pct, 1) : 'N/A'} · ${m.pct_off_52w_high ?? 0}% vs 52W High`],
+    ['💰 Capital Allocation, Yield & 13F Smart Money (10% Wt)', pil.capital_smart_money ?? 56, `Shareholder Yield ${m.total_shareholder_yield_pct ?? 0}%`],
+  ].map(([lbl, sc, note]) => {
+    const col = sc >= 68 ? '#22c55e' : sc >= 50 ? '#38bdf8' : '#f59e0b';
+    return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;margin-bottom:3px;gap:6px">
+          <span style="font-weight:700;color:var(--text)">${lbl}</span>
+          <span style="font-weight:800;color:${col}">${sc}/100</span>
+        </div>
+        <div class="gf-bar-track" style="height:7px"><div class="gf-bar-fill" style="width:${sc}%;background:${col}"></div></div>
+        <div style="font-size:10px;color:var(--dim);margin-top:2px">${note}</div>
+      </div>
+    `;
+  }).join('');
+
+  const tranchesHtml = (dca.tranches || []).map(tr => {
+    const zLo = tr.zone?.[0] ?? spot;
+    const zHi = tr.zone?.[1] ?? spot;
+    const zMid = Math.max(0.01, (zLo + zHi) / 2);
+    const trDollars = coreBudget * ((tr.weight_pct || 33) / 100);
+    const trShares = Math.max(1, Math.round(trDollars / zMid));
+    const distPct = ((zMid - spot) / spot) * 100;
+    const isT1 = tr.tranche === 1;
+    return `
+      <tr>
+        <td><strong style="color:${isT1 ? 'var(--accent)' : 'var(--text)'}">${tr.label}</strong></td>
+        <td style="font-weight:700;color:${isT1 ? 'var(--green)' : 'var(--accent)'}">${f$(zLo)} – ${f$(zHi)} <span style="font-size:10px;color:var(--dim)">(${fpct(distPct, 1)})</span></td>
+        <td><strong>${trShares} sh</strong> <span style="color:var(--muted);font-size:10.5px">(${f$(trShares * zMid, 0)})</span></td>
+        <td style="font-size:11px;color:var(--muted)">${tr.trigger}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const invRulesHtml = (dca.invalidation_rules || []).map(r => `<li style="margin-bottom:5px;color:var(--muted);font-size:11.5px;line-height:1.45">🛡️ ${r}</li>`).join('');
+
+  ltEl.innerHTML = `
+    <div class="gf-ai-banner" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <strong style="color:var(--accent);font-size:12.5px">🏛️ Secular Compounder Blueprint: ${ov.name || S.ticker} (${S.ticker})</strong>
+          <span class="badge b-purple">${lt.archetype || '🏛️ COMPOUNDER'}</span>
+          <span class="badge ${vBadge}">${lt.score}/100 · ${lt.verdict}</span>
+        </div>
+        <button class="btn-sec" style="font-size:10.5px;padding:3px 9px;border-color:rgba(56,189,248,.4);color:var(--accent)" onclick="switchHorizon('longterm')">
+          ${S.horizonMode === 'longterm' ? '✓ Active in Main Chart & Proposal' : '🏛️ Activate Long-Term (1–3Y) Mode'}
+        </button>
+      </div>
+      <div style="font-size:11.5px;line-height:1.5;color:var(--text)">
+        Evaluated across a <strong>1–3+ Year Secular Wealth Horizon</strong> (80% Fundamental ROIC, Multi-Year Growth &amp; 2-Stage 10Y DCF / 20% Weekly 50W &amp; 200W Structure). Rather than binary swing stops that shake out investors during routine corrections, capital is deployed unlevered across <strong>3 Dollar-Cost-Averaging (DCA) Tranches</strong> anchored to intrinsic value and weekly institutional moving averages.
+      </div>
+    </div>
+
+    <div class="mc-stats" style="margin-bottom:12px">
+      <div class="mc-card"><div class="lbl">1–3Y Compounder Score</div><div class="val" style="color:${lt.score >= 62 ? 'var(--green)' : 'var(--yellow)'};font-size:14px">${lt.score}/100</div></div>
+      <div class="mc-card"><div class="lbl">Est. ROIC / ROE</div><div class="val" style="color:var(--accent);font-size:14px">${m.roic_est_pct != null ? m.roic_est_pct + '%' : '—'} / ${m.roe_pct != null ? m.roe_pct.toFixed(1) + '%' : '—'}</div></div>
+      <div class="mc-card"><div class="lbl">3Y Rev Growth / OpM</div><div class="val" style="font-size:13.5px">${m.rev_cagr_3y_pct != null ? fpct(m.rev_cagr_3y_pct, 1) : '—'} · ${m.operating_margin_pct != null ? m.operating_margin_pct.toFixed(1) + '%' : '—'}</div></div>
+      <div class="mc-card"><div class="lbl">Base 2-Stage DCF</div><div class="val" style="color:${(dcf.dcf_upside_pct || 0) >= 0 ? 'var(--green)' : 'var(--orange)'};font-size:13.5px">${f$(dcf.intrinsic_fair_value)} (${fpct(dcf.dcf_upside_pct || 0, 1)})</div></div>
+      <div class="mc-card"><div class="lbl">3Y Target &amp; CAGR</div><div class="val" style="color:var(--purple);font-size:13.5px">${f$(dcf.target_3y)} (${fpct(dcf.implied_3y_cagr_pct || 0, 1)}/yr)</div></div>
+      <div class="mc-card"><div class="lbl">Shareholder Yield</div><div class="val" style="color:var(--green);font-size:14px">${m.total_shareholder_yield_pct != null ? m.total_shareholder_yield_pct + '%' : '0.0%'}</div></div>
+    </div>
+
+    <div class="gf-two-col">
+      <div class="gf-box">
+        <h4><span>🏛️ 5-Pillar Institutional Compounder Scorecard</span><span class="badge b-blue">${lt.conviction}</span></h4>
+        ${pillarRows}
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+          <div style="font-size:11.5px;font-weight:800;color:var(--text);margin-bottom:6px">🛡️ Fundamental Thesis-Invalidation Guardrails (Replaces Tight ATR Stops)</div>
+          <ul style="list-style:none;padding:0;margin:0">${invRulesHtml}</ul>
+        </div>
+      </div>
+
+      <div class="gf-box">
+        <h4><span>⚖️ 2-Stage 10Y Intrinsic DCF Bridge &amp; 3-Tranche DCA Plan</span><span class="badge b-green">WACC ${dcf.wacc_pct}% · g₁ ${dcf.stage1_growth_5y_pct}% → gₜ ${dcf.terminal_growth_pct}%</span></h4>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin-bottom:12px">
+          <div class="mc-card"><div class="lbl">Bear DCF</div><div class="val" style="color:var(--yellow);font-size:13px">${f$(dcf.bear_value)}</div></div>
+          <div class="mc-card"><div class="lbl">Spot Price</div><div class="val" style="font-size:13px">${f$(spot)}</div></div>
+          <div class="mc-card"><div class="lbl">Base DCF</div><div class="val" style="color:var(--green);font-size:13px">${f$(dcf.intrinsic_fair_value)}</div></div>
+          <div class="mc-card"><div class="lbl">3-Year Target</div><div class="val" style="color:var(--purple);font-size:13px">${f$(dcf.target_3y)}</div></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <span>Core Allocation Budget: <strong>${f$(coreBudget, 0)} (${(coreWt * 100).toFixed(0)}% of ${f$(acct, 0)})</strong></span>
+          <span>Blended 3-Tranche Cost: <strong style="color:var(--accent)">${f$(dca.blended_avg_cost)}</strong> · 200W Floor: <strong style="color:var(--red)">${f$(dca.thesis_invalidation_price)}</strong></span>
+        </div>
+        <div class="bt-table-wrap">
+          <table class="bt-table">
+            <thead><tr><th>DCA Tranche</th><th>Accumulation Zone</th><th>Core Sizing</th><th>Execution Trigger</th></tr></thead>
+            <tbody>${tranchesHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function applyLongTermProposalToObject(p, intelArg) {
+  if (!p || !S.candles?.length) return p;
+  const intel = intelArg || S.intel || buildFallbackIntelligence(S.ticker, S.market);
+  const lt = intel.long_term || buildClientFallbackLongTerm(intel);
+  intel.long_term = lt;
+
+  const techScore = p.techScore ?? p.score;
+  const spot = S.candles[S.candles.length - 1].close;
+  const acct = parseFloat(document.getElementById('acctSize')?.value) || (S.market === 'IN' ? 500000 : 25000);
+  const dcf = lt.dcf || {};
+  const dca = lt.dca_plan || {};
+  const m = lt.metrics || {};
+  const pil = lt.pillars || {};
+  const tr = dca.tranches || [];
+  const t1 = tr[0]?.zone || [spot * 0.98, spot * 1.01];
+  const t2 = tr[1]?.zone || [spot * 0.90, spot * 0.94];
+  const t3 = tr[2]?.zone || [spot * 0.80, spot * 0.86];
+
+  p.isLongTerm = true;
+  p.longTermData = lt;
+  p.techScore = techScore;
+  p.fundScore = lt.score;
+  p.score = lt.score;
+  p.signal = lt.verdict;
+  p.vClass = lt.vClass;
+  p.conviction = `${lt.archetype || 'Compounder'} · ${lt.conviction}`;
+
+  p.dcfFairValue = dcf.intrinsic_fair_value;
+  p.dcfUpsidePct = dcf.dcf_upside_pct;
+  p.waccPct = dcf.wacc_pct;
+
+  p.entryLabel = 'DCA Tranche 1 (40% Starter)';
+  p.entryLow = t1[0];
+  p.entryHigh = t1[1];
+  p.entrySub = tr[0]?.trigger || 'Core Starter Zone';
+  p.dcaT2Price = t2[0];
+
+  p.horizon = '1–3+ Years (Compounder)';
+  p.horizonSub = `Implied 3Y CAGR: ${fpct(dcf.implied_3y_cagr_pct || 0, 1)}/yr`;
+
+  const coreWt = clamp(0.10 + Math.max(0, lt.score - 50) * 0.0025, 0.10, 0.22);
+  const fullShares = Math.max(1, Math.floor((acct * coreWt) / spot));
+  const t1Shares = Math.max(1, Math.round(fullShares * 0.40));
+
+  if (lt.vClass === 'sell') {
+    p.sharesDisplay = '0 sh New · Wait T2 Dip';
+    p.allocDisplay = `Target T2 Dip: ${f$(t2[0])}–${f$(t2[1])}`;
+    p.sharesColor = 'var(--yellow)';
+    p.recShares = 0;
+    p.recDollars = 0;
+    p.recPct = 0;
+  } else {
+    p.sharesDisplay = `T1: ${t1Shares} sh · Core: ${fullShares} sh`;
+    p.allocDisplay = `${f$(t1Shares * spot, 0)} now · ${f$(fullShares * spot, 0)} (${(coreWt * 100).toFixed(0)}%) Full DCA`;
+    p.sharesColor = 'var(--green)';
+    p.recShares = fullShares;
+    p.recDollars = fullShares * spot;
+    p.recPct = coreWt * 100;
+  }
+
+  p.stopLoss = dca.thesis_invalidation_price || Number((spot * 0.72).toFixed(2));
+  p.stopMeta = `200W Floor · T2 ${f$(t2[0])} / T3 ${f$(t3[0])}`;
+  p.tp1 = dcf.bear_value;
+  p.pTP1 = `Conservative Bear DCF (WACC ${(dcf.wacc_pct || 9) + 1.25}%)`;
+  p.tp2 = dcf.intrinsic_fair_value;
+  p.pTP2 = `Base 10Y DCF (MoS ${fpct(dcf.margin_of_safety_pct || 0, 1)})`;
+  p.tp3 = dcf.target_3y;
+  p.pTP3 = `3Y Compounder (${fpct(dcf.implied_3y_cagr_pct || 0, 1)}/yr CAGR)`;
+
+  const swingVsLtNote = (techScore <= 42 && lt.score >= 62)
+    ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(56,189,248,.22);font-size:11.5px;color:var(--text);line-height:1.5">
+         <strong style="color:var(--green)">🎯 Quality-on-Sale Accumulation Window (Why Long-Term Says ${lt.verdict} While 1–8W Swing Is Cautious at ${techScore}/100):</strong><br/>
+         Short-term swing technicals penalize near-term pullbacks to avoid leveraged drawdowns, whereas <strong>Long-Term Compounder Mode (1–3Y)</strong> actively rewards buying high-ROIC (${m.roic_est_pct ?? '—'}%) secular winners during <code>${m.pct_off_52w_high ?? 0}%</code> pullbacks below Base Intrinsic DCF (<strong>${f$(dcf.intrinsic_fair_value)}</strong>). Deploy unlevered capital across <strong>T1 (${f$(t1[0])}–${f$(t1[1])})</strong>, <strong>T2 50W EMA (${f$(t2[0])}–${f$(t2[1])})</strong>, and <strong>T3 200W Floor (${f$(t3[0])}–${f$(t3[1])})</strong>.
+       </div>`
+    : '';
+
+  p.divergenceHtml = `
+    <div class="gf-ai-banner" style="margin-bottom:0;background:rgba(15,23,42,.82);border-color:rgba(168,85,247,.35)">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:center">
+        <div>
+          <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:var(--muted)">🏰 Quality &amp; Moat (30%)</div>
+          <div style="font-size:14px;font-weight:800;color:var(--green)">${pil.quality_moat ?? 60}/100</div>
+        </div>
+        <div>
+          <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:var(--muted)">🚀 3Y Growth (25%)</div>
+          <div style="font-size:14px;font-weight:800;color:var(--accent)">${pil.growth_revisions ?? 58}/100</div>
+        </div>
+        <div>
+          <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:var(--muted)">⚖️ 2-Stage DCF (20%)</div>
+          <div style="font-size:14px;font-weight:800;color:${(pil.dcf_valuation ?? 55) >= 60 ? 'var(--green)' : 'var(--yellow)'}">${pil.dcf_valuation ?? 55}/100</div>
+        </div>
+        <div>
+          <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:var(--muted)">📐 50W/200W Trend (15%)</div>
+          <div style="font-size:14px;font-weight:800;color:var(--purple)">${pil.secular_structure ?? 60}/100</div>
+        </div>
+        <div>
+          <div style="font-size:9.5px;font-weight:700;text-transform:uppercase;color:var(--muted)">💰 Yield &amp; 13F (10%)</div>
+          <div style="font-size:14px;font-weight:800;color:var(--text)">${pil.capital_smart_money ?? 56}/100</div>
+        </div>
+      </div>
+      ${swingVsLtNote}
+    </div>
+  `;
+
+  if (lt.catalysts?.length) p.catalysts = lt.catalysts.slice(0, 5);
+  if (lt.risks?.length) p.risks = lt.risks.slice(0, 5);
+  p.thesis = [
+    `🏛️ LONG-TERM COMPOUNDER THESIS (${S.ticker} · ${lt.archetype} · ${lt.score}/100 ${lt.verdict}):`,
+    `${S.meta?.longName || S.ticker} (${f$(spot)}) scores ${lt.score}/100 on our 1–3+ Year Secular Compounding engine — blending Quality/ROIC (${pil.quality_moat}/100, Est. ROIC ${m.roic_est_pct ?? 'N/A'}%, Op Margin ${m.operating_margin_pct != null ? m.operating_margin_pct.toFixed(1) + '%' : 'N/A'}), Multi-Year Growth (${pil.growth_revisions}/100, 3Y Rev Growth ${m.rev_cagr_3y_pct != null ? fpct(m.rev_cagr_3y_pct, 1) : 'N/A'}), and 2-Stage 10Y Intrinsic DCF (${pil.dcf_valuation}/100).`,
+    ``,
+    `⚖️ 2-STAGE 10Y DCF & 3-YEAR COMPOUNDING BRIDGE (WACC ${dcf.wacc_pct}% · Stage-1 5Y Growth ${dcf.stage1_growth_5y_pct}% → Terminal ${dcf.terminal_growth_pct}%):`,
+    `• Conservative Bear DCF: ${f$(dcf.bear_value)} | Base Intrinsic DCF: ${f$(dcf.intrinsic_fair_value)} (${fpct(dcf.dcf_upside_pct || 0, 1)} vs. Spot) | 3-Year Compounder Target: ${f$(dcf.target_3y)} (Implied ${fpct(dcf.implied_3y_cagr_pct || 0, 1)}/yr annualized total return CAGR).`,
+    ``,
+    `🪜 3-TRANCHE DOLLAR-COST-AVERAGING (DCA) EXECUTION (${(coreWt * 100).toFixed(0)}% Max Core Weight = ${f$(acct * coreWt, 0)}):`,
+    `• Tranche 1 (40% Starter · ${t1Shares} sh): ${f$(t1[0])} – ${f$(t1[1])} (${tr[0]?.trigger || 'Starter'})`,
+    `• Tranche 2 (35% Core Add): ${f$(t2[0])} – ${f$(t2[1])} (${tr[1]?.trigger || '50W EMA Support'})`,
+    `• Tranche 3 (25% Deep Value): ${f$(t3[0])} – ${f$(t3[1])} (${tr[2]?.trigger || '200W SMA / Bear DCF Floor'})`,
+    `• Secular Thesis-Invalidation Floor: Weekly close below ${f$(p.stopLoss)} accompanied by multi-quarter revenue contraction or >400 bps operating margin decay.`,
+  ].join('\n');
+  p._intelApplied = true;
+  return p;
 }
 
 function enrichProposalWithIntelligence(intel) {
   if (!intel || !S.proposal) return;
   const p = S.proposal;
+  if (S.horizonMode === 'longterm') {
+    applyLongTermProposalToObject(p, intel);
+    renderProposal(p);
+    updateChartPriceLines(p);
+    updateSidebar();
+    updateChatContextUI(false);
+    return;
+  }
   const an = intel.analysis || {};
   const er = intel.earnings || {};
   const fin = intel.financials || {};
@@ -5201,10 +6034,11 @@ function updateChatContextUI(onNewTicker = false) {
   const last = S.candles?.[S.candles.length - 1];
   const p = S.proposal;
   const flag = S.market === 'IN' ? '🇮🇳' : '🇺🇸';
+  const hzTag = S.horizonMode === 'longterm' ? '🏛️ 1–3Y' : '⚡ Swing';
   const ctxEl = document.getElementById('chatCtxTicker');
   if (ctxEl && last && p) {
     const col = p.score >= 60 ? 'var(--green)' : p.score <= 40 ? 'var(--red)' : 'var(--yellow)';
-    ctxEl.innerHTML = `${flag} <strong>${sym}</strong> (${f$(last.close)}) · <span style="color:${col}">${p.score}/100 ${p.signal}</span>`;
+    ctxEl.innerHTML = `${flag} <strong>${sym}</strong> (${f$(last.close)}) · <span style="color:var(--accent)">${hzTag}</span> · <span style="color:${col}">${p.score}/100 ${p.signal}</span>`;
   }
 
   const modeEl = document.getElementById('chatModePill');
@@ -5217,6 +6051,7 @@ function updateChatContextUI(onNewTicker = false) {
   const sig = p?.signal || 'BUY/HOLD';
   const bLbl = benchName();
   const chips = [
+    { lbl: `🏛️ 1–3Y DCF & 3-Tranche DCA`, q: `Switch to Long-Term (1–3Y) Compounder mode for ${sym}, open its Long-Term DCF & DCA tab, plot its 3Y Target & DCA Tranches on the chart, and evaluate its ROIC, 2-Stage 10Y DCF, and 3-Tranche accumulation plan.` },
     { lbl: `🎯 Plot Targets & Why ${sig}?`, q: `Plot ${sym}'s Wall Street price targets on the chart and explain why ${sym} is rated ${sig} (${p?.score || '—'}/100) across Technicals vs. Street Fundamentals.` },
     { lbl: `📑 Drive Financials & FCF`, q: `Open ${sym}'s quarterly financials tab and audit its 5-quarter revenue, operating margins, CapEx, and free cash flow conversion.` },
     { lbl: `⚔️ Bull vs. Bear Debate`, q: `Run a head-to-head Bull vs. Bear debate on ${sym} using its technicals, Wall Street price targets, earnings revisions, and cash flow.`, mode: 'debate' },
@@ -6317,6 +7152,61 @@ async function buildQuantReasoningReply(question) {
     };
   }
 
+  // 7A. LONG-TERM COMPOUNDER, 2-STAGE 10Y DCF & 3-TRANCHE DCA BLUEPRINT
+  if (/\b(long-?term|long\s+run|compounder|dcf|intrinsic|3-?tranche|tranche|1[–-]3\s*y|3-?year|multi-?year|roic|secular|wealth)\b/i.test(qLower)) {
+    const it = S.intel || buildFallbackIntelligence(sym, S.market);
+    const lt = it.long_term || buildClientFallbackLongTerm(it);
+    it.long_term = lt;
+    const dcf = lt.dcf || {};
+    const dca = lt.dca_plan || {};
+    const m = lt.metrics || {};
+    const pil = lt.pillars || {};
+    const coreWt = clamp(0.10 + Math.max(0, (lt.score || 50) - 50) * 0.0025, 0.10, 0.22);
+    const coreBudget = acct * coreWt;
+    const trRows = (dca.tranches || []).map(tr => {
+      const zLo = tr.zone?.[0] ?? price, zHi = tr.zone?.[1] ?? price;
+      const zMid = Math.max(0.01, (zLo + zHi) / 2);
+      const sh = Math.max(1, Math.round((coreBudget * ((tr.weight_pct || 33) / 100)) / zMid));
+      return `<tr><td><strong>${tr.label}</strong></td><td><code>${f$(zLo)} – ${f$(zHi)}</code></td><td><strong>${sh} sh</strong> (${f$(sh * zMid, 0)})</td><td>${tr.trigger}</td></tr>`;
+    }).join('');
+
+    return {
+      html: `
+        <h4>🏛️ Long-Term Compounder (1–3Y), 2-Stage DCF &amp; 3-Tranche DCA: ${sym}</h4>
+        <p><strong>${S.meta?.longName || sym} (${f$(price)})</strong> scores <strong>${lt.score}/100 (${lt.verdict} · ${lt.archetype})</strong> on our 5-Pillar Secular Compounding framework (80% ROIC, Growth &amp; 2-Stage 10Y DCF / 20% Weekly 50W &amp; 200W Structure):</p>
+        <table class="chat-kv-table">
+          <tr><th>Compounder Pillar</th><th>Score</th><th>Live Institutional Telemetry</th></tr>
+          <tr><td><strong>1. Quality, Moat &amp; Balance Sheet (30%)</strong></td><td><strong>${pil.quality_moat}/100</strong></td><td>Est. ROIC <strong>${m.roic_est_pct ?? 'N/A'}%</strong> · ROE ${m.roe_pct != null ? m.roe_pct.toFixed(1) + '%' : 'N/A'} · Op Margin ${m.operating_margin_pct != null ? m.operating_margin_pct.toFixed(1) + '%' : 'N/A'}</td></tr>
+          <tr><td><strong>2. Multi-Year Growth &amp; Revisions (25%)</strong></td><td><strong>${pil.growth_revisions}/100</strong></td><td>3Y Rev Growth <strong>${m.rev_cagr_3y_pct != null ? fpct(m.rev_cagr_3y_pct, 1) : 'N/A'}</strong> · FCF Margin ${m.fcf_margin_pct ?? 'N/A'}%</td></tr>
+          <tr><td><strong>3. 2-Stage 10Y Intrinsic DCF (20%)</strong></td><td><strong>${pil.dcf_valuation}/100</strong></td><td>Base DCF <strong>${f$(dcf.intrinsic_fair_value)} (${fpct(dcf.dcf_upside_pct || 0, 1)})</strong> · Bear ${f$(dcf.bear_value)} · WACC ${dcf.wacc_pct}%</td></tr>
+          <tr><td><strong>4. Secular 50W / 200W Structure (15%)</strong></td><td><strong>${pil.secular_structure}/100</strong></td><td>5Y CAGR ${m.cagr_5y_pct != null ? fpct(m.cagr_5y_pct, 1) : 'N/A'} · ${m.pct_off_52w_high ?? 0}% vs 52W High · 200W SMA ${f$(m.sma200w)}</td></tr>
+          <tr><td><strong>5. Capital Return &amp; 13F Money (10%)</strong></td><td><strong>${pil.capital_smart_money}/100</strong></td><td>Shareholder Yield <strong>${m.total_shareholder_yield_pct ?? 0}%</strong> · 3Y Target <strong>${f$(dcf.target_3y)} (${fpct(dcf.implied_3y_cagr_pct || 0, 1)}/yr CAGR)</strong></td></tr>
+        </table>
+        <h4>🪜 3-Tranche DCA Execution Plan (${(coreWt * 100).toFixed(0)}% Core Cap = ${f$(coreBudget, 0)} · 200W Floor ${f$(dca.thesis_invalidation_price)})</h4>
+        <table class="chat-kv-table">
+          <tr><th>Tranche</th><th>Accumulation Zone</th><th>Core Sizing</th><th>Trigger</th></tr>
+          ${trRows}
+        </table>
+      `,
+      actions: [
+        { label: `🏛️ Switch Page to Long-Term (1–3Y) Mode`, onClick: () => switchHorizon('longterm') },
+        { label: `🏛️ Open Long-Term DCF & DCA Tab`, onClick: () => jumpToIntelTab('longterm') },
+        {
+          label: `📏 Plot DCF & DCA Tranches on Chart`,
+          onClick: () => {
+            const trs = dca.tranches || [];
+            plotCustomChartLines([
+              { price: dcf.target_3y, color: '#a855f7', title: '3Y Compounder Target' },
+              { price: dcf.intrinsic_fair_value, color: '#22c55e', title: 'Base 2-Stage DCF' },
+              ...(trs[0] ? [{ price: trs[0].zone[0], color: '#38bdf8', title: 'DCA T1 (40%)' }] : []),
+              ...(trs[1] ? [{ price: trs[1].zone[0], color: '#f59e0b', title: 'DCA T2 (35% · 50W)' }] : []),
+            ]);
+          }
+        },
+      ]
+    };
+  }
+
   // 7B. FUNDAMENTALS, EARNINGS, FINANCIALS, HOLDINGS, ANALYST TARGETS & EVENTS
   if (/\b(fundamental|earnings|financials|revenue|cash flow|fcf|capex|balance sheet|debt|margin|roe|analyst|ratings?|upgrade|downgrade|holdings?|institutional|insiders?|sec filing|10-k|10-q|8-k|dividend)\b/i.test(qLower)) {
     const it = S.intel || buildFallbackIntelligence(sym, S.market);
@@ -6410,15 +7300,21 @@ function buildLiveDossierForLLM() {
     ? `Extended-Hours Tape (${extQ.label}): Price=${f$(extQ.price)} (${fpct(extQ.changePct || 0, 2)}, ${extQ.change >= 0 ? '+' : ''}${f$(extQ.change || 0)}${extQ.volStr ? `, Vol=${extQ.volStr}` : ''}${extQ.timeStr ? ` @ ${extQ.timeStr}` : ''}) | Quant Mode=${S.useExtHours ? 'Modeled on Extended-Hours Price' : 'Official Regular Session Close'}`
     : `Extended-Hours Tape: Inactive (Regular Session Reference)`;
 
+  const lt = S.intel?.long_term || (S.intel ? buildClientFallbackLongTerm(S.intel) : null);
+  const ltLine = lt
+    ? `Long-Term Compounder & 2-Stage DCF (1–3Y): Score=${lt.score}/100 (${lt.verdict}, ${lt.archetype}) | Pillars=[Quality:${lt.pillars?.quality_moat}, Growth:${lt.pillars?.growth_revisions}, DCF:${lt.pillars?.dcf_valuation}, Secular50W/200W:${lt.pillars?.secular_structure}, Capital:${lt.pillars?.capital_smart_money}] | Est.ROIC=${lt.metrics?.roic_est_pct ?? 'N/A'}%, BaseDCF=${f$(lt.dcf?.intrinsic_fair_value)} (${fpct(lt.dcf?.dcf_upside_pct || 0, 1)}, WACC=${lt.dcf?.wacc_pct}%), 3YTarget=${f$(lt.dcf?.target_3y)} (Implied3YCAGR=${fpct(lt.dcf?.implied_3y_cagr_pct || 0, 1)}/yr), DCA=[T1:${f$(lt.dca_plan?.tranches?.[0]?.zone?.[0])}–${f$(lt.dca_plan?.tranches?.[0]?.zone?.[1])}, T2:${f$(lt.dca_plan?.tranches?.[1]?.zone?.[0])}, T3:${f$(lt.dca_plan?.tranches?.[2]?.zone?.[0])}, 200WFloor:${f$(lt.dca_plan?.thesis_invalidation_price)}]`
+    : `Long-Term Compounder & 2-Stage DCF (1–3Y): Loading fundamental corpus`;
+
   return [
-    `Active Instrument: ${sym} (${S.meta?.longName || sym}) | Market: ${S.market === 'IN' ? 'NSE India (INR ₹)' : 'US Equities (USD $)'}`,
-    `Spot Price: ${f$(last.close)} | Dual-Pillar Quantamental Score: ${p.score}/100 (Technical Timing Score: ${p.techScore ?? p.score}/100, Street/Fundamental Score: ${p.fundScore ?? 'N/A'}/100) | Action Verdict: ${p.signal} (${p.conviction})`,
+    `Active Instrument: ${sym} (${S.meta?.longName || sym}) | Market: ${S.market === 'IN' ? 'NSE India (INR ₹)' : 'US Equities (USD $)'} | Active Horizon Mode: ${S.horizonMode === 'longterm' ? 'Long-Term Compounder (1–3+ Years)' : 'Tactical Swing (1–8 Weeks)'}`,
+    `Spot Price: ${f$(last.close)} | Active Proposal Score: ${p.score}/100 (Technical Swing Score: ${p.techScore ?? p.score}/100, Fundamental/Compounder Score: ${p.fundScore ?? 'N/A'}/100) | Action Verdict: ${p.signal} (${p.conviction})`,
     extLine,
+    ltLine,
     `Trend & Moving Averages: EMA20=${f$(le20)}, EMA50=${f$(le50)}, SMA200=${f$(ls200)}, Kaufman KAMA=${f$(lkama)} (Efficiency Ratio ${(lkamaER * 100).toFixed(0)}%), ATR SuperTrend=${lst.dir === 1 ? 'BULL' : 'BEAR'} @ ${f$(lst.line)}, Reclaim Trigger=${f$(p.reclaimLevel || le20)}`,
     `Momentum & Volatility Radar: RSI(14)=${lrsi.toFixed(1)}, Connors RSI(2)=${lrsi2.toFixed(1)}, MACD Hist=${(lmcd.hist || 0).toFixed(3)}, TTM Squeeze=${lsq.sqOn ? 'COILED ON' : 'OFF'} (NR7=${lsq.isNR7 ? 'YES' : 'NO'}, Mom=${(lsq.mom || 0).toFixed(2)}), Wilder ATR(14)=${f$(latr)}`,
     `Volume Profile (20-Bin): POC=${f$(vp.poc)}, Value Area Low (VAL)=${f$(vp.val)}, Value Area High (VAH)=${f$(vp.vah)}`,
     `Risk & Regime Metrics: Hurst H=${q.hurst.toFixed(2)} (${q.regime}), Annualized Sharpe=${q.sharpe.toFixed(2)}, Sortino=${q.sortino.toFixed(2)}, Calmar=${q.calmar.toFixed(2)}, Max Drawdown=${fpct(q.maxDD * 100, 1)}, AnnVol=${(q.annVol * 100).toFixed(1)}%, Beta=${q.beta?.toFixed(2) ?? 'N/A'}, Jensen's Alpha=${q.alphaAnn != null ? fpct(q.alphaAnn * 100, 1) : 'N/A'}, Daily VaR(95%)=${fpct(q.var95 * 100, 2)}, CVaR(95%)=${fpct(q.cvar95 * 100, 2)}, Half-Kelly=${(q.halfKelly * 100).toFixed(1)}%`,
-    `Execution Plan (${p.execMode || 'LONG'}): ${p.entryLabel || 'Entry'}=${f$(p.entryLow)}–${f$(p.entryHigh)}, Stop-Loss=${f$(p.stopLoss)}, TP1(1.5R)=${f$(p.tp1)}, TP2(2.5R)=${f$(p.tp2)}, TP3(4.0R)=${f$(p.tp3)}, Holding Horizon=${p.horizon}, Active Sizing=${p.sharesDisplay || (p.shares + ' sh')} (${p.allocDisplay || ''})`,
+    `Execution Plan (${p.isLongTerm ? 'LONG_TERM_3_TRANCHE_DCA' : (p.execMode || 'LONG')}): ${p.entryLabel || 'Entry'}=${f$(p.entryLow)}–${f$(p.entryHigh)}, Stop/Floor=${f$(p.stopLoss)}, TP1/BearDCF=${f$(p.tp1)}, TP2/BaseDCF=${f$(p.tp2)}, TP3/3YTarget=${f$(p.tp3)}, Holding Horizon=${p.horizon}, Active Sizing=${p.sharesDisplay || (p.shares + ' sh')} (${p.allocDisplay || ''})`,
     `Monte Carlo Simulation (${mc.nDays}d ${mc.model.toUpperCase()}): Win Probability=${mc.stats.probUp.toFixed(1)}%, Bear Tail P5=${f$(mc.stats.p5)}, P25=${f$(mc.stats.p25)}, Median P50=${f$(mc.stats.med)}, P75=${f$(mc.stats.p75)}, Bull Tail P95=${f$(mc.stats.p95)}, 5% Expected Shortfall (CVaR)=${f$(mc.stats.cvarPrice)} (${fpct(mc.stats.cvarPct, 1)})`,
     `Systematic Strategy Backtester (7 Specialists + Walk-Forward Meta-Boss):\n${btLines}`,
     `Current Weekly Top 5 Alpha Picks (${S.market}): ${wkTop || 'N/A'}`,
@@ -6433,6 +7329,16 @@ async function executePageDriverCommands(uiCommands) {
     if (!c || !c.cmd) continue;
     try {
       switch (c.cmd) {
+        case 'SET_HORIZON': {
+          const targetHz = c.horizon === 'longterm' ? 'longterm' : 'swing';
+          if (targetHz !== S.horizonMode) {
+            switchHorizon(targetHz);
+            executed.push(targetHz === 'longterm'
+              ? '🏛️ Switched Horizon to Long-Term Compounder (1–3Y · 5Y Weekly Chart + 2-Stage DCF)'
+              : '⚡ Switched Horizon to Tactical Swing (1–8W · 1Y Daily Chart)');
+          }
+          break;
+        }
         case 'SWITCH_MARKET': {
           const targetMkt = (c.market || 'US').toUpperCase();
           if (targetMkt !== S.market) {
@@ -6513,11 +7419,29 @@ async function executePageDriverCommands(uiCommands) {
             document.getElementById('acctSize').value = String(Math.round(cap));
             if (S.candles?.length) {
               S.proposal = buildTradeProposal();
-              if (S.intel) enrichProposalWithIntelligence(S.intel);
-              else renderProposal(S.proposal);
+              if (S.intel) {
+                enrichProposalWithIntelligence(S.intel);
+                renderIntelLongTermPane(S.intel);
+              } else {
+                renderProposal(S.proposal);
+              }
             }
             executed.push(`💼 Updated Portfolio Capital to ${f$(cap, 0)} & resized position`);
           }
+          break;
+        }
+        case 'RUN_LONGTERM_SCAN': {
+          if (c.preset && document.getElementById('wkPreset')) {
+            document.getElementById('wkPreset').value = c.preset;
+            if (WEEKLY_PRESETS[c.preset]) {
+              document.getElementById('wkCustomSyms').value = WEEKLY_PRESETS[c.preset];
+            }
+          }
+          if (S.horizonMode !== 'longterm') {
+            switchHorizon('longterm', { skipScanner: true });
+          }
+          runLongTermScanner();
+          executed.push(`🏛️ Triggered Long-Term Compounder & DCF Scanner (${c.preset || 'leaders'})`);
           break;
         }
         case 'RUN_WEEKLY_SCAN': {
@@ -6526,6 +7450,9 @@ async function executePageDriverCommands(uiCommands) {
             if (WEEKLY_PRESETS[c.preset]) {
               document.getElementById('wkCustomSyms').value = WEEKLY_PRESETS[c.preset];
             }
+          }
+          if (S.horizonMode !== 'swing') {
+            switchHorizon('swing', { skipScanner: true });
           }
           runWeeklyScanner();
           executed.push(`📅 Triggered Weekly Alpha Scanner (${c.preset || 'leaders'})`);
@@ -6740,6 +7667,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  document.querySelectorAll('.hz-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.h !== S.horizonMode) switchHorizon(btn.dataset.h);
+    });
+  });
+
   document.querySelectorAll('.qt').forEach(b => {
     b.addEventListener('click', () => {
       document.getElementById('tickerInput').value = b.dataset.t;
@@ -6770,38 +7703,42 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('acctSize').addEventListener('change', () => {
     if (S.candles.length) {
       S.proposal = buildTradeProposal();
-      if (S.intel) enrichProposalWithIntelligence(S.intel);
-      else {
+      if (S.intel) {
+        enrichProposalWithIntelligence(S.intel);
+        renderIntelLongTermPane(S.intel);
+      } else {
         renderProposal(S.proposal);
         updateChartPriceLines(S.proposal);
       }
     }
-    if (S.weeklyData) runWeeklyScanner();
+    if (S.weeklyData || S.longtermData) runActiveHorizonScanner();
   });
 
-  // Weekly Alpha Scanner controls
+  // Weekly / Long-Term Scanner controls
   document.getElementById('wkPreset').addEventListener('change', e => {
     const v = e.target.value;
     if (WEEKLY_PRESETS[v]) {
       document.getElementById('wkCustomSyms').value = WEEKLY_PRESETS[v];
-      runWeeklyScanner();
+      runActiveHorizonScanner();
     }
   });
-  document.getElementById('wkScanBtn').addEventListener('click', runWeeklyScanner);
+  document.getElementById('wkScanBtn').addEventListener('click', runActiveHorizonScanner);
   document.getElementById('wkCustomSyms').addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       document.getElementById('wkPreset').value = 'custom';
-      runWeeklyScanner();
+      runActiveHorizonScanner();
     }
   });
   document.getElementById('intelTopBtn')?.addEventListener('click', () => {
-    jumpToIntelTab('overview');
+    jumpToIntelTab(S.horizonMode === 'longterm' ? 'longterm' : 'overview');
   });
   document.getElementById('weeklyTopBtn').addEventListener('click', () => {
     const p = document.getElementById('weeklyPanel');
     p.classList.remove('collapsed');
     p.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (!S.weeklyData) runWeeklyScanner();
+    if (S.horizonMode === 'longterm' ? !S.longtermData : !S.weeklyData) {
+      runActiveHorizonScanner();
+    }
   });
 
   // Monte Carlo re-run
@@ -6903,13 +7840,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (S.btResults.length) drawBacktestCanvas(document.getElementById('btCanvas'), S.btResults);
   });
 
-  // Default load (supports ?market=IN|US&ticker=SYM&section=weeklyPanel|mcPanel|btPanel&chat=1&ask=...)
+  // Default load (supports ?market=IN|US&horizon=longterm|swing&ticker=SYM&section=weeklyPanel|mcPanel|btPanel&chat=1&ask=...)
   const qsParams = new URLSearchParams(window.location.search);
   const qMkt = (qsParams.get('market') || 'US').toUpperCase();
+  const qHz = (qsParams.get('horizon') || '').toLowerCase();
   const qSym = qsParams.get('ticker');
   const qSec = qsParams.get('section');
   const qChat = qsParams.get('chat');
   const qAsk = qsParams.get('ask');
+
+  if (qHz === 'longterm' || qHz === 'lt') {
+    switchHorizon('longterm', { skipAnalyze: true, skipScanner: true });
+  }
 
   if (qMkt === 'IN') {
     switchMarket('IN');
@@ -6920,7 +7862,7 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     document.getElementById('tickerInput').value = (qSym || 'NVDA').toUpperCase();
     analyze();
-    setTimeout(runWeeklyScanner, 300);
+    setTimeout(runActiveHorizonScanner, 300);
   }
 
   if (qChat === '1' || qAsk) {

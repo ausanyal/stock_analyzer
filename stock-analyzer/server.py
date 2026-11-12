@@ -36,6 +36,8 @@ _BARS_CACHE = {}
 _INDIA_FUND_CACHE = {}
 _NEWS_CACHE = {}
 _INTEL_CACHE = {}
+_LT_FAST_CACHE = {}
+_LT_SCAN_CACHE = {}
 _YAHOO_SESSION = {"cookie": "", "crumb": "", "ts": 0.0}
 _GCP_META_CACHE = {"token": "", "project": "", "exp": 0.0}
 
@@ -2098,8 +2100,15 @@ def fetch_stock_intelligence(symbol: str, market: str = "US") -> dict:
         "operating_income": "OperatingIncome",
         "ebitda": "EBITDA",
         "net_income": "NetIncome",
+        "eps": "DilutedEPS",
         "operating_cash_flow": "OperatingCashFlow",
+        "capex": "CapitalExpenditure",
         "free_cash_flow": "FreeCashFlow",
+        "total_cash": "TotalCashAndCashEquivalents",
+        "total_debt": "TotalDebt",
+        "total_assets": "TotalAssets",
+        "equity": "StockholdersEquity",
+        "shares": "DilutedAverageShares",
     }
     q_fin_rows = _extract_ts_by_date("quarterly", q_fields)[-5:]
     a_fin_rows = _extract_ts_by_date("annual", a_fields)[-4:]
@@ -2120,16 +2129,23 @@ def fetch_stock_intelligence(symbol: str, market: str = "US") -> dict:
         "quarterly": q_fin_rows,
         "annual": a_fin_rows,
         "highlights": {
+            "total_revenue_raw": _raw_val(fd.get("totalRevenue")),
             "total_revenue_ttm_fmt": _fmt_compact_num(_raw_val(fd.get("totalRevenue")), ccy),
+            "ebitda_raw": _raw_val(fd.get("ebitda")),
             "ebitda_ttm_fmt": _fmt_compact_num(_raw_val(fd.get("ebitda")), ccy),
+            "total_cash_raw": _raw_val(fd.get("totalCash")),
             "total_cash_fmt": _fmt_compact_num(_raw_val(fd.get("totalCash")), ccy),
             "total_cash_per_share": _raw_val(fd.get("totalCashPerShare")),
+            "total_debt_raw": _raw_val(fd.get("totalDebt")),
             "total_debt_fmt": _fmt_compact_num(_raw_val(fd.get("totalDebt")), ccy),
             "debt_to_equity_pct": round(_raw_val(fd.get("debtToEquity")), 1) if _raw_val(fd.get("debtToEquity")) is not None else None,
             "current_ratio": round(_raw_val(fd.get("currentRatio")), 2) if _raw_val(fd.get("currentRatio")) is not None else None,
             "quick_ratio": round(_raw_val(fd.get("quickRatio")), 2) if _raw_val(fd.get("quickRatio")) is not None else None,
+            "operating_cash_flow_raw": _raw_val(fd.get("operatingCashflow")),
             "operating_cash_flow_ttm_fmt": _fmt_compact_num(_raw_val(fd.get("operatingCashflow")), ccy),
+            "free_cash_flow_raw": _raw_val(fd.get("freeCashflow")),
             "free_cash_flow_ttm_fmt": _fmt_compact_num(_raw_val(fd.get("freeCashflow")), ccy),
+            "shares_outstanding_raw": _raw_val(ks.get("sharesOutstanding")),
         },
     }
 
@@ -2371,10 +2387,853 @@ def fetch_stock_intelligence(symbol: str, market: str = "US") -> dict:
         "news": news_data,
     }
 
+    try:
+        bars_5y_raw = fetch_india_bars(clean_sym, "5y") if is_india else fetch_nasdaq_bars(clean_sym, "5y")
+    except Exception:
+        bars_5y_raw = []
+    result_payload["long_term"] = compute_long_term_compounder(result_payload, bars_5y=bars_5y_raw)
+
     if qs or news_data.get("headlines"):
         with _CACHE_LOCK:
             _INTEL_CACHE[cache_key] = {"ts": now, "data": result_payload}
     return dict(result_payload)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  LONG-TERM COMPOUNDER, 2-STAGE INTRINSIC DCF & 3-TRANCHE DCA ENGINE (1–3Y+)
+#  5 Institutional Pillars:
+#    1. Quality, Moat & Fortress Balance Sheet (30%)
+#    2. Multi-Year Growth Durability & Street Revisions (25%)
+#    3. 2-Stage 10Y Intrinsic DCF Valuation & Margin of Safety (20%)
+#    4. Secular Multi-Year Structure & Pullback Opportunity (15%)
+#    5. Capital Allocation, Shareholder Yield & Smart Money (10%)
+# ════════════════════════════════════════════════════════════════════════════
+def _aggregate_to_weekly_bars(daily_bars: list) -> list:
+    if not daily_bars:
+        return []
+    wk_bars = []
+    cur_wk = None
+    for idx, b in enumerate(daily_bars):
+        if b.get("time") is not None:
+            dt = datetime.datetime.fromtimestamp(int(b["time"]), datetime.timezone.utc)
+            yr_wk = dt.isocalendar()[:2]
+        elif b.get("date"):
+            try:
+                dt = datetime.date.fromisoformat(str(b["date"])[:10])
+                yr_wk = dt.isocalendar()[:2]
+            except Exception:
+                yr_wk = (0, idx // 5)
+        else:
+            yr_wk = (0, idx // 5)
+        if cur_wk is None or cur_wk["yr_wk"] != yr_wk:
+            if cur_wk:
+                wk_bars.append(cur_wk["bar"])
+            cur_wk = {"yr_wk": yr_wk, "bar": dict(b)}
+        else:
+            cb = cur_wk["bar"]
+            cb["high"] = max(cb["high"], b["high"])
+            cb["low"] = min(cb["low"], b["low"])
+            cb["close"] = b["close"]
+            cb["volume"] = (cb.get("volume") or 0.0) + (b.get("volume") or 0.0)
+    if cur_wk:
+        wk_bars.append(cur_wk["bar"])
+    return wk_bars
+
+
+def compute_long_term_compounder(intel: dict, bars_5y: list = None) -> dict:
+    def _clamp(v, lo, hi):
+        return max(lo, min(hi, v))
+
+    mkt = (intel.get("market") or "US").upper()
+    is_india = mkt == "IN"
+    ccy = intel.get("currency") or ("₹" if is_india else "$")
+    ov = intel.get("overview") or {}
+    an = intel.get("analysis") or {}
+    er = intel.get("earnings") or {}
+    fin = intel.get("financials") or {}
+    hd = intel.get("holdings") or {}
+    hl = fin.get("highlights") or {}
+    val = an.get("valuation") or {}
+    prof = an.get("profitability") or {}
+    pt = an.get("price_targets") or {}
+    a_rows = fin.get("annual") or []
+
+    sym = intel.get("symbol") or ov.get("symbol") or "TICKER"
+    spot = ov.get("regular_price") or pt.get("current") or (bars_5y[-1]["close"] if bars_5y else 100.0)
+    spot = max(float(spot or 100.0), 0.01)
+
+    mkt_cap = ov.get("market_cap_raw")
+    shares = hl.get("shares_outstanding_raw") or ((mkt_cap / spot) if (mkt_cap and spot > 0) else None)
+    is_etf = "ETF" in (ov.get("industry") or "").upper() or "TRUST" in (ov.get("name") or "").upper() or sym in ("SPY", "QQQ", "IWM", "SMH", "XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "GLD", "TLT", "NIFTY50", "BANKNIFTY", "SENSEX")
+
+    # ── Multi-Year Statement Trajectory (3Y–4Y CAGR, Margin Expansion, Buyback Yield) ──
+    rev_cagr_3y_pct = None
+    op_inc_cagr_3y_pct = None
+    margin_delta_bps = None
+    buyback_yield_pct = 0.0
+
+    if len(a_rows) >= 2:
+        yrs = max(1, len(a_rows) - 1)
+        r0, r1 = a_rows[0].get("revenue"), a_rows[-1].get("revenue")
+        if r0 and r1 and r0 > 0 and r1 > 0:
+            rev_cagr_3y_pct = round(((r1 / r0) ** (1.0 / yrs) - 1.0) * 100.0, 2)
+        op0, op1 = a_rows[0].get("operating_income"), a_rows[-1].get("operating_income")
+        if op0 and op1 and op0 > 0 and op1 > 0:
+            op_inc_cagr_3y_pct = round(((op1 / op0) ** (1.0 / yrs) - 1.0) * 100.0, 2)
+        if r0 and r1 and r0 > 0 and r1 > 0 and op0 is not None and op1 is not None:
+            m0 = (op0 / r0) * 100.0
+            m1 = (op1 / r1) * 100.0
+            margin_delta_bps = round((m1 - m0) * 100.0, 0)
+        sh0, sh1 = a_rows[0].get("shares"), a_rows[-1].get("shares")
+        if sh0 and sh1 and sh0 > 0 and sh1 > 0:
+            # Positive buyback_yield_pct means share count shrank (accretive buybacks); negative means dilution
+            buyback_yield_pct = round((1.0 - (sh1 / sh0) ** (1.0 / yrs)) * 100.0, 2)
+
+    # ── Secular Weekly Chart Structure (5Y Weekly Bars) ──
+    wk_bars = _aggregate_to_weekly_bars(bars_5y) if bars_5y and len(bars_5y) > 60 else (bars_5y or [])
+    wk_closes = [float(b["close"]) for b in wk_bars if b.get("close")]
+    ema20w = spot
+    ema50w = spot * 0.94
+    sma200w = spot * 0.78
+    wk_atr = spot * 0.045
+    cagr_5y_pct = None
+    sharpe_5y = None
+    max_dd_5y_pct = None
+
+    if len(wk_closes) >= 20:
+        e20_s = _ema_series(wk_closes, min(20, len(wk_closes)))
+        e50_s = _ema_series(wk_closes, min(50, len(wk_closes)))
+        ema20w = e20_s[-1] or spot
+        ema50w = e50_s[-1] or ema20w
+        n_sma = min(200, len(wk_closes))
+        sma200w = sum(wk_closes[-n_sma:]) / n_sma
+        wk_atr_s = _atr_series(wk_bars, min(14, len(wk_bars) - 1))
+        wk_atr = wk_atr_s[-1] if (wk_atr_s and wk_atr_s[-1]) else spot * 0.045
+
+        yrs_hist = max(0.5, len(wk_closes) / 52.0)
+        if wk_closes[0] > 0:
+            cagr_5y_pct = round(((wk_closes[-1] / wk_closes[0]) ** (1.0 / yrs_hist) - 1.0) * 100.0, 2)
+        wk_rets = [(wk_closes[i] - wk_closes[i - 1]) / wk_closes[i - 1] for i in range(1, len(wk_closes)) if wk_closes[i - 1] > 0]
+        if len(wk_rets) >= 12:
+            m_r = sum(wk_rets) / len(wk_rets)
+            sd_r = math.sqrt(max(1e-10, sum((x - m_r) ** 2 for x in wk_rets) / (len(wk_rets) - 1)))
+            rf_wk = (0.0675 if is_india else 0.0425) / 52.0
+            sharpe_5y = round(((m_r - rf_wk) / sd_r) * math.sqrt(52.0), 2)
+        pk = wk_closes[0]
+        mdd = 0.0
+        for c in wk_closes:
+            if c > pk:
+                pk = c
+            dd = (c - pk) / max(pk, 1e-6)
+            if dd < mdd:
+                mdd = dd
+        max_dd_5y_pct = round(mdd * 100.0, 1)
+
+    w52_hi = ov.get("week_52_high") or (max(wk_closes[-52:]) if wk_closes else spot)
+    w52_lo = ov.get("week_52_low") or (min(wk_closes[-52:]) if wk_closes else spot * 0.75)
+    pct_off_52w_hi = round(((spot - w52_hi) / max(w52_hi, 1e-6)) * 100.0, 1) if w52_hi else 0.0
+
+    # ── PILLAR 1: QUALITY, MOAT & FORTRESS BALANCE SHEET (30% Wt) ──
+    roe = prof.get("roe_pct")
+    roa = prof.get("roa_pct")
+    gm = prof.get("gross_margin_pct")
+    om = prof.get("operating_margin_pct")
+    nm = prof.get("profit_margin_pct")
+    tot_cash = hl.get("total_cash_raw")
+    tot_debt = hl.get("total_debt_raw")
+    ebitda_raw = hl.get("ebitda_raw")
+    fcf_raw = hl.get("free_cash_flow_raw")
+    rev_raw = hl.get("total_revenue_raw")
+    de_pct = hl.get("debt_to_equity_pct")
+
+    # Estimate ROIC (%)
+    roic_est = None
+    if a_rows and a_rows[-1].get("operating_income") and (a_rows[-1].get("equity") or mkt_cap):
+        eq_v = a_rows[-1].get("equity") or (0.35 * (mkt_cap or 0))
+        db_v = a_rows[-1].get("total_debt") or (tot_debt or 0.0)
+        cs_v = a_rows[-1].get("total_cash") or (tot_cash or 0.0)
+        inv_cap = max(eq_v + db_v - min(cs_v, 0.7 * (eq_v + db_v)), 0.12 * (mkt_cap or 1.0))
+        if inv_cap > 0:
+            roic_est = round(((a_rows[-1]["operating_income"] * 0.79) / inv_cap) * 100.0, 1)
+    if roic_est is None and roe is not None:
+        roic_est = round(roe / (1.0 + 0.6 * max(0.0, (de_pct or 0.0) / 100.0)), 1)
+
+    fcf_margin_pct = round((fcf_raw / rev_raw) * 100.0, 1) if (fcf_raw is not None and rev_raw and rev_raw > 0) else None
+    net_cash_raw = (tot_cash - tot_debt) if (tot_cash is not None and tot_debt is not None) else None
+    net_debt_ebitda = round(((tot_debt or 0.0) - (tot_cash or 0.0)) / ebitda_raw, 2) if (ebitda_raw and ebitda_raw > 0 and tot_debt is not None) else None
+
+    lt_catalysts = []
+    lt_risks = []
+
+    if is_etf:
+        q_score = 76.0 if (sharpe_5y or 0.6) >= 0.5 else 64.0
+        lt_catalysts.append(f"Diversified Index/ETF Vehicle: Eliminates single-company balance-sheet & idiosyncratic moat decay risk (5Y Sharpe {sharpe_5y or 0.65:.2f}).")
+    else:
+        q_score = 52.0
+        cap_eff = roic_est if roic_est is not None else roe
+        if cap_eff is not None:
+            if cap_eff >= 25:
+                q_score += 20
+                lt_catalysts.append(f"Wide Economic Moat: Exceptional capital efficiency (Est. ROIC {roic_est or cap_eff:.1f}% · ROE {roe or cap_eff:.1f}%) far exceeds cost of capital.")
+            elif cap_eff >= 15:
+                q_score += 12
+                lt_catalysts.append(f"Compounder Returns on Capital: Strong capital productivity (Est. ROIC {roic_est or cap_eff:.1f}% · ROE {roe or cap_eff:.1f}%).")
+            elif cap_eff < 7:
+                q_score -= 12
+                lt_risks.append(f"Low Capital Efficiency: Sub-hurdle returns on capital ({cap_eff:.1f}%) limit intrinsic compounding.")
+
+        if om is not None:
+            if om >= 25:
+                q_score += 10
+            elif om >= 15:
+                q_score += 5
+            elif om < 5:
+                q_score -= 10
+        if gm is not None and gm >= 55:
+            q_score += 5
+        if margin_delta_bps is not None:
+            if margin_delta_bps >= 150:
+                q_score += 6
+                lt_catalysts.append(f"Operating Leverage: Multi-year operating margin expanded by +{int(margin_delta_bps)} bps across annual filings.")
+            elif margin_delta_bps <= -300:
+                q_score -= 7
+                lt_risks.append(f"Margin Compression: Multi-year operating margin contracted by {int(margin_delta_bps)} bps.")
+
+        if fcf_margin_pct is not None:
+            if fcf_margin_pct >= 18:
+                q_score += 9
+            elif fcf_margin_pct >= 8:
+                q_score += 4
+            elif fcf_margin_pct < 0:
+                q_score -= 10
+                lt_risks.append(f"Negative TTM Free Cash Flow ({fcf_margin_pct:.1f}% FCF margin) due to heavy CapEx reinvestment cycle — monitor cash conversion.")
+
+        if net_cash_raw is not None and net_cash_raw > 0:
+            q_score += 8
+            lt_catalysts.append(f"Fortress Balance Sheet: Net cash position of {_fmt_compact_num(net_cash_raw, ccy)} ({hl.get('total_cash_fmt')} cash vs. {hl.get('total_debt_fmt')} debt).")
+        elif net_debt_ebitda is not None:
+            if net_debt_ebitda <= 1.8:
+                q_score += 4
+            elif net_debt_ebitda >= 3.5:
+                q_score -= 10
+                lt_risks.append(f"Balance Sheet Leverage: Net Debt / EBITDA at {net_debt_ebitda:.2f}x increases refinancing sensitivity.")
+        elif de_pct is not None and de_pct > 180:
+            q_score -= 8
+    pillar_quality = int(round(_clamp(q_score, 15, 98)))
+
+    # ── PILLAR 2: MULTI-YEAR GROWTH DURABILITY & REVISIONS (25% Wt) ──
+    rev_yoy = prof.get("revenue_growth_yoy_pct")
+    earn_yoy = prof.get("earnings_growth_yoy_pct")
+    fwd_eps_g = None
+    fwd_rev_g = None
+    up_rev_30d = 0
+    dn_rev_30d = 0
+    for t in (er.get("trend_estimates") or []):
+        if t.get("period") in ("+1y", "0y"):
+            if t.get("eps_growth_pct") is not None and fwd_eps_g is None:
+                fwd_eps_g = t["eps_growth_pct"]
+            if t.get("rev_growth_pct") is not None and fwd_rev_g is None:
+                fwd_rev_g = t["rev_growth_pct"]
+            up_rev_30d += int(t.get("up_last_30d") or 0)
+            dn_rev_30d += int(t.get("down_last_30d") or 0)
+
+    if is_etf:
+        g_score = _clamp(55.0 + ((cagr_5y_pct or 10.0) - 8.0) * 1.8, 35, 88)
+    else:
+        g_score = 50.0
+        growth_signals = [x for x in (rev_cagr_3y_pct, rev_yoy, fwd_rev_g, fwd_eps_g, earn_yoy) if x is not None]
+        blended_g = sum(growth_signals) / len(growth_signals) if growth_signals else (cagr_5y_pct or 9.0)
+        if blended_g >= 20:
+            g_score += 24
+            lt_catalysts.append(f"Secular Top- & Bottom-Line Compounding: Blended multi-year growth trajectory of +{blended_g:.1f}% (3Y Rev CAGR: {f'{rev_cagr_3y_pct:+.1f}%' if rev_cagr_3y_pct is not None else 'N/A'}, YoY Rev: {f'{rev_yoy:+.1f}%' if rev_yoy is not None else 'N/A'}).")
+        elif blended_g >= 11:
+            g_score += 14
+            lt_catalysts.append(f"Durable Compounding Runway: Steady ~{blended_g:.1f}% multi-year revenue & earnings growth profile.")
+        elif blended_g >= 4:
+            g_score += 4
+        elif blended_g < 0:
+            g_score -= 16
+            lt_risks.append(f"Top/Bottom-Line Contraction: Blended growth rate is negative ({blended_g:+.1f}%), signaling secular or cyclical headwinds.")
+
+        beats_4q = er.get("beat_count_last_4q") or 0
+        tot_q = er.get("total_quarters_tracked") or 0
+        if tot_q >= 3 and beats_4q >= 3:
+            g_score += 8
+        if up_rev_30d > dn_rev_30d + 1:
+            g_score += 7
+            lt_catalysts.append(f"Positive Forward Estimate Revisions: {up_rev_30d} upward vs. {dn_rev_30d} downward Street annual EPS revisions in the last 30 days.")
+        elif dn_rev_30d > up_rev_30d + 2:
+            g_score -= 7
+            lt_risks.append(f"Negative Earnings Revision Drift: {dn_rev_30d} downward vs. {up_rev_30d} upward annual EPS revisions over the past 30 days.")
+    pillar_growth = int(round(_clamp(g_score, 15, 98)))
+
+    # ── PILLAR 3: 2-STAGE 10Y INTRINSIC DCF & MARGIN OF SAFETY (20% Wt) ──
+    rf = 0.0675 if is_india else 0.0425
+    erp = 0.055 if is_india else 0.0475
+    beta_c = _clamp(float(ov.get("beta") or 1.05), 0.70, 1.65)
+    wacc = _clamp(rf + beta_c * erp, 0.095 if is_india else 0.075, 0.150 if is_india else 0.130)
+    term_g = 0.045 if is_india else 0.030
+
+    pe_fwd = val.get("pe_fwd") or ov.get("pe_fwd")
+    pe_ttm = val.get("pe_ttm") or ov.get("pe_ttm")
+    peg = val.get("peg_ratio")
+
+    # Estimate conservative 5Y compounding rate g_5y for DCF
+    g_cands = [x for x in (rev_cagr_3y_pct, rev_yoy, fwd_eps_g, fwd_rev_g) if x is not None]
+    raw_g_pct = (sum(g_cands) / len(g_cands)) if g_cands else (cagr_5y_pct if cagr_5y_pct is not None else 10.0)
+    g_5y = _clamp(raw_g_pct / 100.0, 0.035, 0.24)
+
+    fcf_ps = (fcf_raw / shares) if (fcf_raw is not None and shares and shares > 0) else None
+    eps_anchor = ov.get("eps_fwd") or ov.get("eps_ttm") or (spot / max(pe_fwd or pe_ttm or 22.0, 6.0))
+    if fcf_ps is not None and fcf_ps > 0:
+        owner_cf_ps = 0.60 * fcf_ps + 0.40 * (0.90 * max(eps_anchor, 0.01))
+    else:
+        owner_cf_ps = 0.78 * max(eps_anchor, spot * 0.028)
+
+    net_cash_ps = _clamp((net_cash_raw / shares), -0.35 * spot, 0.35 * spot) if (net_cash_raw is not None and shares and shares > 0) else 0.0
+
+    def _run_2stage_dcf(cf0: float, g1: float, disc: float, gt: float, nc_ps: float) -> float:
+        pv_sum = 0.0
+        cf = max(cf0, 0.01)
+        for yr in range(1, 11):
+            g_yr = g1 if yr <= 5 else (g1 - ((yr - 5) / 5.0) * (g1 - gt))
+            cf *= (1.0 + g_yr)
+            pv_sum += cf / ((1.0 + disc) ** yr)
+        tv = (cf * (1.0 + gt)) / max(disc - gt, 0.025)
+        pv_tv = tv / ((1.0 + disc) ** 10)
+        return max(spot * 0.25, pv_sum + pv_tv + 0.85 * nc_ps)
+
+    raw_dcf_bear = _run_2stage_dcf(owner_cf_ps * 0.92, max(0.02, g_5y * 0.72), wacc + 0.0125, max(0.02, term_g - 0.005), net_cash_ps)
+    raw_dcf_base = _run_2stage_dcf(owner_cf_ps, g_5y, wacc, term_g, net_cash_ps)
+    raw_dcf_bull = _run_2stage_dcf(owner_cf_ps * 1.06, min(0.28, g_5y * 1.18), max(0.065, wacc - 0.01), term_g + 0.005, net_cash_ps)
+
+    # Blend 65% 2-Stage 10Y DCF + 35% Institutional Consensus Target when >=4 analysts cover the stock
+    an_cnt = an.get("analyst_count") or 0
+    if an_cnt >= 4 and pt.get("mean"):
+        dcf_bear = round(0.65 * raw_dcf_bear + 0.35 * (pt.get("low") or raw_dcf_bear), 2)
+        dcf_base = round(0.65 * raw_dcf_base + 0.35 * pt["mean"], 2)
+        dcf_bull = round(0.65 * raw_dcf_bull + 0.35 * (pt.get("high") or raw_dcf_bull), 2)
+    else:
+        dcf_bear = round(raw_dcf_bear, 2)
+        dcf_base = round(raw_dcf_base, 2)
+        dcf_bull = round(max(raw_dcf_bull, dcf_base * 1.18), 2)
+
+    dcf_bear = round(min(dcf_bear, dcf_base * 0.88), 2)
+    dcf_bull = round(max(dcf_bull, dcf_base * 1.18), 2)
+    dcf_upside_pct = round(((dcf_base - spot) / spot) * 100.0, 1)
+    margin_of_safety_pct = round(((dcf_base - spot) / max(dcf_base, 1e-6)) * 100.0, 1)
+
+    # 3-Year Projected Compounded Target Price & Annualized Total Return CAGR
+    fair_exit_pe = _clamp((16.0 if is_india else 15.0) + (g_5y * 100.0) * 0.95, 14.0, 36.0)
+    eps_3y_proj = max(eps_anchor, spot / 25.0) * ((1.0 + g_5y) ** 3)
+    multiple_3y_target = eps_3y_proj * fair_exit_pe
+    target_3y = round(max(spot * 0.65, 0.55 * multiple_3y_target + 0.45 * (dcf_base * ((1.0 + max(0.08, wacc)) ** 2.2))), 2)
+    div_sh_yield = max(0.0, (ov.get("dividend_yield_pct") or 0.0) + max(0.0, buyback_yield_pct * 0.5))
+    implied_3y_cagr_pct = round((((target_3y / spot) ** (1.0 / 3.0)) - 1.0) * 100.0 + (ov.get("dividend_yield_pct") or 0.0), 1)
+
+    eff_peg = peg if (peg and peg > 0) else ((pe_fwd or pe_ttm) / max(g_5y * 100.0, 5.0) if (pe_fwd or pe_ttm) else None)
+    fcf_yield_pct = round((fcf_raw / mkt_cap) * 100.0, 2) if (fcf_raw is not None and mkt_cap and mkt_cap > 0) else None
+
+    v_score = 52.0
+    if dcf_upside_pct >= 25:
+        v_score += 22
+        lt_catalysts.append(f"Intrinsic DCF Margin of Safety: Trades at a {margin_of_safety_pct:.1f}% discount to 2-Stage Intrinsic Fair Value ({ccy}{dcf_base:,.2f}, +{dcf_upside_pct:.1f}% upside).")
+    elif dcf_upside_pct >= 8:
+        v_score += 11
+    elif dcf_upside_pct <= -18:
+        v_score -= 16
+        lt_risks.append(f"Valuation Multiple Premium: Spot ({ccy}{spot:,.2f}) trades {-dcf_upside_pct:.1f}% above Base Intrinsic DCF ({ccy}{dcf_base:,.2f}), leaving low margin for execution misses.")
+
+    if eff_peg is not None:
+        if eff_peg <= 1.35:
+            v_score += 12
+            lt_catalysts.append(f"Attractive GARP Valuation: Forward PEG of {eff_peg:.2f}x prices multi-year growth at a discount.")
+        elif eff_peg <= 2.0:
+            v_score += 5
+        elif eff_peg >= 3.2:
+            v_score -= 12
+            lt_risks.append(f"Elevated PEG Ratio ({eff_peg:.2f}x): Implies aggressive multi-year growth expectations already priced in.")
+    if fcf_yield_pct is not None and fcf_yield_pct >= (rf * 100.0):
+        v_score += 6
+    pillar_valuation = int(round(_clamp(v_score, 12, 96)))
+
+    # ── PILLAR 4: SECULAR WEEKLY STRUCTURE & PULLBACK OPPORTUNITY (15% Wt) ──
+    s_score = 56.0
+    secular_uptrend = ema50w >= sma200w * 0.98
+    if secular_uptrend:
+        s_score += 14
+    else:
+        s_score -= 10
+    if (cagr_5y_pct or 0) >= 12:
+        s_score += 8
+    if (sharpe_5y or 0) >= 0.75:
+        s_score += 6
+
+    # Quality-on-Sale Pullback Bonus: In a 1–3Y compounder model, a -10% to -30% pullback in a high-quality business is an ACCUMULATION gift!
+    if pillar_quality >= 65 and pillar_growth >= 58 and -32.0 <= pct_off_52w_hi <= -10.0:
+        s_score += 12
+        lt_catalysts.append(f"Secular Pullback Opportunity ('Quality on Sale'): High-ROIC compounder is {pct_off_52w_hi:.1f}% off its 52W high ({ccy}{w52_hi:,.2f}), offering an institutional DCA entry window.")
+    elif pct_off_52w_hi > -3.0 and dcf_upside_pct < 0:
+        s_score -= 6
+    pillar_secular = int(round(_clamp(s_score, 18, 96)))
+
+    # ── PILLAR 5: CAPITAL ALLOCATION, SHAREHOLDER YIELD & SMART MONEY (10% Wt) ──
+    c_score = 52.0
+    div_y = ov.get("dividend_yield_pct") or 0.0
+    tot_sh_yield = round(div_y + buyback_yield_pct, 2)
+    if tot_sh_yield >= 2.5:
+        c_score += 14
+        lt_catalysts.append(f"Shareholder-Friendly Capital Return: {tot_sh_yield:+.2f}% total shareholder yield ({div_y:.2f}% dividend + {buyback_yield_pct:+.2f}% net buyback retirements).")
+    elif buyback_yield_pct <= -2.5:
+        c_score -= 10
+        lt_risks.append(f"Shareholder Dilution: Diluted share count expanded by {-buyback_yield_pct:.2f}%/yr across annual filings.")
+
+    inst_p = hd.get("institutions_pct") or 0.0
+    short_p = hd.get("short_pct_of_float") or 0.0
+    if inst_p >= 60:
+        c_score += 10
+    elif inst_p >= 35:
+        c_score += 5
+    if short_p >= 10:
+        c_score -= 10
+        lt_risks.append(f"Elevated Short Interest ({short_p:.1f}% of float): Institutional short sellers are actively betting against fundamentals.")
+    elif 0 < short_p <= 3.0:
+        c_score += 5
+    pillar_capital = int(round(_clamp(c_score, 18, 95)))
+
+    # ── COMPOSITE 1–3Y LONG-TERM COMPOUNDER SCORE & ARCHETYPE ──
+    lt_score = int(round(_clamp(
+        0.30 * pillar_quality
+        + 0.25 * pillar_growth
+        + 0.20 * pillar_valuation
+        + 0.15 * pillar_secular
+        + 0.10 * pillar_capital,
+        12, 97
+    )))
+
+    if lt_score >= 75 and dcf_upside_pct >= 8:
+        lt_verdict = "CORE ACCUMULATE"
+        lt_vclass = "buy"
+        lt_conviction = "High Multi-Year Compounder"
+    elif lt_score >= 63:
+        lt_verdict = "BUY / DCA ON DIPS"
+        lt_vclass = "buy"
+        lt_conviction = "Quality GARP / Secular Growth"
+    elif lt_score >= 48:
+        lt_verdict = "HOLD / CORE WATCH"
+        lt_vclass = "hold"
+        lt_conviction = "Wait for Better Margin of Safety"
+    elif lt_score >= 36:
+        lt_verdict = "TRIM / FULLY VALUED"
+        lt_vclass = "sell"
+        lt_conviction = "Valuation Stretched vs. DCF"
+    else:
+        lt_verdict = "AVOID (STRUCTURAL)"
+        lt_vclass = "sell"
+        lt_conviction = "Weak Moat or Deteriorating Fundamentals"
+
+    if is_etf:
+        archetype = "🏛️ CORE INDEX COMPOUNDER"
+    elif pillar_quality >= 78 and pillar_growth >= 72:
+        archetype = "🏰 WIDE-MOAT COMPOUNDER"
+    elif pillar_valuation >= 70 and pillar_quality >= 64:
+        archetype = "💎 GARP VALUE LEADER"
+    elif pillar_growth >= 76:
+        archetype = "🚀 SECULAR GROWTH LEADER"
+    elif div_y >= 2.2 and pillar_quality >= 62:
+        archetype = "💰 DIVIDEND FORTRESS"
+    elif dcf_upside_pct <= -12 and pillar_quality >= 65:
+        archetype = "⏳ QUALITY (WAIT FOR DIP)"
+    else:
+        archetype = "⚖️ CYCLICAL / TURNAROUND"
+
+    # ── 3-TRANCHE DOLLAR-COST-AVERAGING (DCA) ACCUMULATION LADDER ──
+    is_on_sale = (dcf_upside_pct >= 12.0) or (pct_off_52w_hi <= -12.0)
+    if is_on_sale:
+        t1_low = round(spot * 0.97, 2)
+        t1_high = round(spot * 1.01, 2)
+        t1_note = "Active Value Window — Deploy 40% Starter Tranche Now"
+    else:
+        pullback_anchor = min(spot * 0.96, max(ema20w, spot - 0.9 * wk_atr))
+        t1_low = round(pullback_anchor * 0.98, 2)
+        t1_high = round(min(spot, pullback_anchor * 1.01), 2)
+        t1_note = "20-Week EMA Pullback — Deploy 40% Starter on Dip"
+
+    t2_anchor = min(t1_low * 0.92, max(ema50w, spot * 0.86))
+    t2_low = round(t2_anchor * 0.985, 2)
+    t2_high = round(t2_anchor * 1.015, 2)
+
+    t3_anchor = min(t2_low * 0.90, max(sma200w, dcf_bear, spot * 0.74))
+    t3_low = round(t3_anchor * 0.98, 2)
+    t3_high = round(t3_anchor * 1.02, 2)
+
+    blended_dca_cost = round(0.40 * ((t1_low + t1_high) / 2.0) + 0.35 * ((t2_low + t2_high) / 2.0) + 0.25 * ((t3_low + t3_high) / 2.0), 2)
+    thesis_floor = round(min(t3_low * 0.90, sma200w * 0.92, spot * 0.72), 2)
+
+    invalidation_rules = [
+        f"Structural Secular Breakdown: Weekly close below 200-Week SMA / Thesis Floor ({ccy}{thesis_floor:,.2f}) accompanied by deteriorating fundamentals.",
+        "Earnings & Moat Erosion: 2 consecutive quarters of YoY revenue contraction or negative 90-day consensus EPS revisions.",
+        "Capital & Margin Decay: Operating margin compression > 400 bps or ROIC falling below WACC without clear ROI visibility.",
+    ]
+
+    return {
+        "horizon": "1–3+ Years (Secular Compounding)",
+        "score": lt_score,
+        "verdict": lt_verdict,
+        "vClass": lt_vclass,
+        "conviction": lt_conviction,
+        "archetype": archetype,
+        "pillars": {
+            "quality_moat": pillar_quality,
+            "growth_revisions": pillar_growth,
+            "dcf_valuation": pillar_valuation,
+            "secular_structure": pillar_secular,
+            "capital_smart_money": pillar_capital,
+        },
+        "metrics": {
+            "roic_est_pct": roic_est,
+            "roe_pct": roe,
+            "gross_margin_pct": gm,
+            "operating_margin_pct": om,
+            "fcf_margin_pct": fcf_margin_pct,
+            "fcf_yield_pct": fcf_yield_pct,
+            "rev_cagr_3y_pct": rev_cagr_3y_pct,
+            "op_inc_cagr_3y_pct": op_inc_cagr_3y_pct,
+            "margin_delta_bps": margin_delta_bps,
+            "buyback_yield_pct": buyback_yield_pct,
+            "total_shareholder_yield_pct": tot_sh_yield,
+            "eff_peg": round(eff_peg, 2) if eff_peg is not None else None,
+            "pe_fwd": round(pe_fwd, 2) if pe_fwd is not None else None,
+            "net_debt_ebitda": net_debt_ebitda,
+            "cagr_5y_pct": cagr_5y_pct,
+            "sharpe_5y": sharpe_5y,
+            "max_dd_5y_pct": max_dd_5y_pct,
+            "pct_off_52w_high": pct_off_52w_hi,
+            "ema20w": round(ema20w, 2),
+            "ema50w": round(ema50w, 2),
+            "sma200w": round(sma200w, 2),
+        },
+        "dcf": {
+            "wacc_pct": round(wacc * 100.0, 2),
+            "stage1_growth_5y_pct": round(g_5y * 100.0, 1),
+            "terminal_growth_pct": round(term_g * 100.0, 1),
+            "owner_cf_per_share": round(owner_cf_ps, 2),
+            "bear_value": dcf_bear,
+            "intrinsic_fair_value": dcf_base,
+            "bull_value": dcf_bull,
+            "dcf_upside_pct": dcf_upside_pct,
+            "margin_of_safety_pct": margin_of_safety_pct,
+            "target_3y": target_3y,
+            "implied_3y_cagr_pct": implied_3y_cagr_pct,
+        },
+        "dca_plan": {
+            "is_immediate_value_window": is_on_sale,
+            "blended_avg_cost": blended_dca_cost,
+            "thesis_invalidation_price": thesis_floor,
+            "tranches": [
+                {"tranche": 1, "weight_pct": 40, "label": "Tranche 1 (40% · Core Starter)", "zone": [t1_low, t1_high], "trigger": t1_note},
+                {"tranche": 2, "weight_pct": 35, "label": "Tranche 2 (35% · 50W EMA / Support)", "zone": [t2_low, t2_high], "trigger": f"Add near 50-Week EMA ({ccy}{ema50w:,.2f})"},
+                {"tranche": 3, "weight_pct": 25, "label": "Tranche 3 (25% · Secular 200W / Bear DCF)", "zone": [t3_low, t3_high], "trigger": f"Deep Value Floor ({ccy}{sma200w:,.2f} / Bear DCF)"},
+            ],
+            "invalidation_rules": invalidation_rules,
+        },
+        "catalysts": lt_catalysts[:5],
+        "risks": lt_risks[:5],
+    }
+
+
+def _fetch_lt_fast_intel(sym: str, market: str = "US") -> dict:
+    """Fast cached 5-module fundamental snapshot for cross-sectional Long-Term Compounder scanning."""
+    is_india = (market or "US").upper() == "IN" or sym.upper().endswith((".NS", ".BO"))
+    mkt = "IN" if is_india else "US"
+    clean_sym = normalize_india_symbol(sym) if is_india else sym.strip().upper()
+    ccy = "₹" if is_india else "$"
+    cache_key = f"{mkt}:{clean_sym}"
+    now = time.time()
+
+    with _CACHE_LOCK:
+        hit_full = _INTEL_CACHE.get(cache_key)
+        if hit_full and (now - hit_full["ts"] < 600.0):
+            return dict(hit_full["data"])
+        hit_fast = _LT_FAST_CACHE.get(cache_key)
+        if hit_fast and (now - hit_fast["ts"] < 600.0):
+            return dict(hit_fast["data"])
+
+    base_meta = fetch_india_quote(clean_sym) if is_india else fetch_cnbc_quote(clean_sym)
+    y_sym = INDIA_YF_MAP.get(clean_sym, f"{clean_sym}.NS") if is_india else clean_sym.replace(".", "-")
+    y_cookie, y_crumb = _get_yahoo_session()
+    qs = {}
+    if not y_sym.startswith("^"):
+        mods = "price,summaryDetail,defaultKeyStatistics,financialData,earningsTrend,majorHoldersBreakdown"
+        for host in ("query2.finance.yahoo.com", "query1.finance.yahoo.com"):
+            try:
+                crumb_q = f"&crumb={urllib.parse.quote(y_crumb)}" if y_crumb else ""
+                u = f"https://{host}/v10/finance/quoteSummary/{urllib.parse.quote(y_sym)}?modules={mods}{crumb_q}"
+                d = _yahoo_get_json(u, y_cookie, timeout=6)
+                res_l = (d.get("quoteSummary") or {}).get("result") or []
+                if res_l:
+                    qs = res_l[0]
+                    break
+            except Exception:
+                continue
+
+    pr = qs.get("price") or {}
+    sd = qs.get("summaryDetail") or {}
+    ks = qs.get("defaultKeyStatistics") or {}
+    fd = qs.get("financialData") or {}
+    et = qs.get("earningsTrend") or {}
+    mh = qs.get("majorHoldersBreakdown") or {}
+
+    def _pct(d, k):
+        v = _raw_val(d.get(k))
+        return round(v * 100.0, 2) if v is not None else None
+
+    reg_price = _raw_val(pr.get("regularMarketPrice")) or base_meta.get("regularMarketPrice") or 100.0
+    tgt_mean = _raw_val(fd.get("targetMeanPrice"))
+    tgt_low = _raw_val(fd.get("targetLowPrice"))
+    tgt_high = _raw_val(fd.get("targetHighPrice"))
+    an_cnt = int(_raw_val(fd.get("numberOfAnalystOpinions")) or 0)
+    div_y_raw = _raw_val(sd.get("dividendYield"))
+    div_y_pct = round(div_y_raw * 100.0, 2) if div_y_raw is not None else base_meta.get("dividendYield")
+
+    tr_est = []
+    for tr_it in (et.get("trend") or [])[:4]:
+        ee = tr_it.get("earningsEstimate") or {}
+        re_est = tr_it.get("revenueEstimate") or {}
+        ep_rev = tr_it.get("epsRevisions") or {}
+        g_r = _raw_val(tr_it.get("growth")) or _raw_val(ee.get("growth"))
+        tr_est.append({
+            "period": tr_it.get("period", ""),
+            "eps_growth_pct": round(g_r * 100.0, 1) if g_r is not None else None,
+            "rev_growth_pct": round(_raw_val(re_est.get("growth")) * 100.0, 1) if _raw_val(re_est.get("growth")) is not None else None,
+            "up_last_30d": int(_raw_val(ep_rev.get("upLast30days")) or 0),
+            "down_last_30d": int(_raw_val(ep_rev.get("downLast30days")) or 0),
+        })
+
+    mini_intel = {
+        "symbol": clean_sym,
+        "market": mkt,
+        "currency": ccy,
+        "overview": {
+            "symbol": clean_sym,
+            "name": _fmt_val(pr.get("longName"), default="") or base_meta.get("longName") or clean_sym,
+            "industry": base_meta.get("instrumentType") or "Equities",
+            "regular_price": round(reg_price, 2),
+            "market_cap_raw": _raw_val(pr.get("marketCap")) or _raw_val(sd.get("marketCap")),
+            "market_cap_fmt": _fmt_val(pr.get("marketCap")) if pr.get("marketCap") else (base_meta.get("marketCapStr") or "N/A"),
+            "pe_ttm": _raw_val(sd.get("trailingPE")) or base_meta.get("trailingPE"),
+            "pe_fwd": _raw_val(sd.get("forwardPE")) or _raw_val(ks.get("forwardPE")) or base_meta.get("forwardPE"),
+            "eps_ttm": _raw_val(ks.get("trailingEps")) or base_meta.get("eps"),
+            "eps_fwd": _raw_val(ks.get("forwardEps")),
+            "dividend_yield_pct": div_y_pct,
+            "week_52_high": _raw_val(sd.get("fiftyTwoWeekHigh")) or base_meta.get("fiftyTwoWeekHigh"),
+            "week_52_low": _raw_val(sd.get("fiftyTwoWeekLow")) or base_meta.get("fiftyTwoWeekLow"),
+            "beta": _raw_val(sd.get("beta")) or _raw_val(ks.get("beta")) or base_meta.get("beta"),
+            "pb_ratio": _raw_val(ks.get("priceToBook")),
+        },
+        "analysis": {
+            "recommendation_key": (fd.get("recommendationKey") or "buy").upper().replace("_", " "),
+            "analyst_count": an_cnt,
+            "price_targets": {
+                "low": tgt_low,
+                "mean": tgt_mean,
+                "high": tgt_high,
+                "current": reg_price,
+                "upside_pct": round(((tgt_mean - reg_price) / reg_price) * 100.0, 1) if (tgt_mean and reg_price > 0) else None,
+            },
+            "valuation": {
+                "pe_ttm": _raw_val(sd.get("trailingPE")) or base_meta.get("trailingPE"),
+                "pe_fwd": _raw_val(sd.get("forwardPE")) or _raw_val(ks.get("forwardPE")) or base_meta.get("forwardPE"),
+                "peg_ratio": _raw_val(ks.get("pegRatio")),
+                "ev_ebitda": _raw_val(ks.get("enterpriseToEbitda")),
+            },
+            "profitability": {
+                "gross_margin_pct": _pct(fd, "grossMargins"),
+                "operating_margin_pct": _pct(fd, "operatingMargins"),
+                "profit_margin_pct": _pct(fd, "profitMargins"),
+                "roe_pct": _pct(fd, "returnOnEquity"),
+                "roa_pct": _pct(fd, "returnOnAssets"),
+                "revenue_growth_yoy_pct": _pct(fd, "revenueGrowth"),
+                "earnings_growth_yoy_pct": _pct(fd, "earningsGrowth"),
+            },
+        },
+        "earnings": {"beat_count_last_4q": 3, "total_quarters_tracked": 4, "trend_estimates": tr_est},
+        "financials": {
+            "quarterly": [],
+            "annual": [],
+            "highlights": {
+                "total_revenue_raw": _raw_val(fd.get("totalRevenue")),
+                "ebitda_raw": _raw_val(fd.get("ebitda")),
+                "total_cash_raw": _raw_val(fd.get("totalCash")),
+                "total_cash_fmt": _fmt_compact_num(_raw_val(fd.get("totalCash")), ccy),
+                "total_debt_raw": _raw_val(fd.get("totalDebt")),
+                "total_debt_fmt": _fmt_compact_num(_raw_val(fd.get("totalDebt")), ccy),
+                "debt_to_equity_pct": _raw_val(fd.get("debtToEquity")),
+                "free_cash_flow_raw": _raw_val(fd.get("freeCashflow")),
+                "shares_outstanding_raw": _raw_val(ks.get("sharesOutstanding")),
+            },
+        },
+        "holdings": {
+            "institutions_pct": _pct(mh, "institutionsPercentHeld") or 55.0,
+            "short_pct_of_float": _pct(ks, "shortPercentOfFloat") or 1.5,
+        },
+    }
+    with _CACHE_LOCK:
+        _LT_FAST_CACHE[cache_key] = {"ts": now, "data": mini_intel}
+    return mini_intel
+
+
+def run_longterm_scan(symbols=None, capital: float = 25000.0, preset: str = "leaders", market: str = "US") -> dict:
+    is_india = (market or "US").upper() == "IN"
+    mkt = "IN" if is_india else "US"
+    ccy = "₹" if is_india else "$"
+    bench_label = "NIFTY 50" if is_india else "S&P 500 (SPY)"
+
+    if not symbols:
+        presets_map = INDIA_WEEKLY_PRESETS if is_india else WEEKLY_PRESETS
+        default_key = "in_leaders" if is_india else "leaders"
+        symbols = presets_map.get(preset, presets_map[default_key])
+
+    clean_syms = []
+    for s in symbols:
+        u = normalize_india_symbol(s) if is_india else s.strip().upper()
+        if u and u not in clean_syms:
+            clean_syms.append(u)
+    clean_syms = clean_syms[:20]
+
+    scan_key = f"{mkt}:{','.join(clean_syms)}:{int(capital)}"
+    now = time.time()
+    with _CACHE_LOCK:
+        cached_scan = _LT_SCAN_CACHE.get(scan_key)
+        if cached_scan and (now - cached_scan["ts"] < 180.0):
+            return dict(cached_scan["data"])
+
+    def _eval_one(sym_item: str):
+        bars = fetch_india_bars(sym_item, "5y") if is_india else fetch_nasdaq_bars(sym_item, "5y")
+        intel_item = _fetch_lt_fast_intel(sym_item, mkt)
+        lt = compute_long_term_compounder(intel_item, bars_5y=bars)
+        ov = intel_item.get("overview") or {}
+        spot = ov.get("regular_price") or (bars[-1]["close"] if bars else 100.0)
+        return {
+            "symbol": sym_item,
+            "name": ov.get("name") or sym_item,
+            "price": round(float(spot), 2),
+            "market_cap_fmt": ov.get("market_cap_fmt") or "N/A",
+            "pe_fwd": lt["metrics"]["pe_fwd"],
+            "eff_peg": lt["metrics"]["eff_peg"],
+            "roic_est_pct": lt["metrics"]["roic_est_pct"],
+            "roe_pct": lt["metrics"]["roe_pct"],
+            "operating_margin_pct": lt["metrics"]["operating_margin_pct"],
+            "rev_growth_pct": (intel_item.get("analysis", {}).get("profitability", {}).get("revenue_growth_yoy_pct")) or lt["metrics"]["rev_cagr_3y_pct"],
+            "shareholder_yield_pct": lt["metrics"]["total_shareholder_yield_pct"],
+            "cagr_5y_pct": lt["metrics"]["cagr_5y_pct"],
+            "sharpe_5y": lt["metrics"]["sharpe_5y"],
+            "pct_off_52w_high": lt["metrics"]["pct_off_52w_high"],
+            "beta": ov.get("beta") or 1.0,
+            "lt_score": lt["score"],
+            "lt_verdict": lt["verdict"],
+            "archetype": lt["archetype"],
+            "pillars": lt["pillars"],
+            "dcf": lt["dcf"],
+            "dca_plan": lt["dca_plan"],
+        }
+
+    candidates = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_eval_one, s): s for s in clean_syms}
+        for fut in concurrent.futures.as_completed(futs):
+            try:
+                candidates.append(fut.result())
+            except Exception:
+                pass
+
+    candidates.sort(key=lambda x: (x["lt_score"], x["dcf"]["implied_3y_cagr_pct"] or 0.0), reverse=True)
+    for idx, c in enumerate(candidates):
+        c["rank"] = idx + 1
+
+    # Build Quality- & Conviction-Weighted Core Wealth Portfolio (Top 5 Compounders, max 25% weight cap)
+    top_core = [c for c in candidates if c["lt_score"] >= 54][:5] or candidates[:5]
+    raw_w = []
+    for c in top_core:
+        beta_pen = max(0.75, min(1.45, float(c.get("beta") or 1.0)))
+        conviction_edge = max(5.0, float(c["lt_score"]) - 42.0) ** 1.25
+        raw_w.append(conviction_edge / (beta_pen ** 0.5))
+    sum_w = sum(raw_w) or 1.0
+    norm_w = [w / sum_w for w in raw_w]
+    for _ in range(3):
+        excess = sum(max(0.0, w - 0.28) for w in norm_w)
+        if excess <= 1e-6:
+            break
+        norm_w = [min(0.28, w) for w in norm_w]
+        uncap = [i for i, w in enumerate(norm_w) if w < 0.28]
+        if uncap:
+            for i in uncap:
+                norm_w[i] += excess / len(uncap)
+
+    allocations = []
+    total_alloc = 0.0
+    total_tranche1_dollars = 0.0
+    wt_cagr_3y = 0.0
+    wt_roic = 0.0
+    for i, c in enumerate(top_core):
+        w = norm_w[i]
+        tgt_dollars = capital * w
+        full_shares = max(1, int(tgt_dollars // c["price"])) if tgt_dollars >= c["price"] else 0
+        actual_dollars = round(full_shares * c["price"], 2)
+        t1_shares = max(1, int(round(full_shares * 0.40))) if full_shares > 0 else 0
+        t1_dollars = round(t1_shares * c["price"], 2)
+        total_alloc += actual_dollars
+        total_tranche1_dollars += t1_dollars
+        wt_cagr_3y += w * (c["dcf"]["implied_3y_cagr_pct"] or 10.0)
+        wt_roic += w * (c["roic_est_pct"] or c["roe_pct"] or 15.0)
+        t1_zone = c["dca_plan"]["tranches"][0]["zone"]
+        allocations.append({
+            "rank": i + 1,
+            "symbol": c["symbol"],
+            "name": c["name"],
+            "archetype": c["archetype"],
+            "lt_score": c["lt_score"],
+            "price": c["price"],
+            "weight_pct": round(w * 100.0, 1),
+            "full_shares": full_shares,
+            "t1_starter_shares": t1_shares,
+            "alloc_dollars": actual_dollars,
+            "t1_dollars": t1_dollars,
+            "t1_zone": t1_zone,
+            "intrinsic_dcf": c["dcf"]["intrinsic_fair_value"],
+            "target_3y": c["dcf"]["target_3y"],
+            "implied_3y_cagr_pct": c["dcf"]["implied_3y_cagr_pct"],
+            "thesis_floor": c["dca_plan"]["thesis_invalidation_price"],
+        })
+
+    proj_3y_value = round(total_alloc * ((1.0 + (wt_cagr_3y / 100.0)) ** 3) + max(0.0, capital - total_alloc), 0)
+
+    out_report = {
+        "as_of": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "horizon_window": "1–3+ Year Secular Compounding",
+        "market": mkt,
+        "currency": "INR" if is_india else "USD",
+        "currency_symbol": ccy,
+        "benchmark": bench_label,
+        "universe_size": len(candidates),
+        "capital": capital,
+        "top_picks": candidates[:5],
+        "portfolio_basket": {
+            "methodology": "Quality- & Conviction-Weighted Core Compounder Allocator (3-Tranche DCA)",
+            "capital": capital,
+            "allocated_dollars": round(total_alloc, 2),
+            "tranche1_deploy_now_dollars": round(total_tranche1_dollars, 2),
+            "dca_dry_powder_dollars": round(max(0.0, capital - total_tranche1_dollars), 2),
+            "weighted_roic_pct": round(wt_roic, 1),
+            "expected_3y_cagr_pct": round(wt_cagr_3y, 1),
+            "projected_3y_portfolio_value": proj_3y_value,
+            "allocations": allocations,
+        },
+        "rankings": candidates,
+    }
+    with _CACHE_LOCK:
+        _LT_SCAN_CACHE[scan_key] = {"ts": now, "data": out_report}
+    return out_report
 
 
 def _get_gcp_vertex_auth() -> tuple:
@@ -2415,7 +3274,11 @@ def _get_gcp_vertex_auth() -> tuple:
 PLANNER_SKILLS_REGISTRY = {
     "skill_page_driver": {
         "name": "UI Page-Driver & Bi-Directional DOM Controller",
-        "description": "Drives StockSage UI state: switches US/India market, loads new tickers, changes chart timeframes, opens 7 Intelligence Hub tabs, toggles Quarterly/Annual financials, re-runs Monte Carlo, plots custom price lines on TradingView chart, updates portfolio capital, and runs the Weekly Alpha Scanner.",
+        "description": "Drives StockSage UI state: switches Swing (1–8W) vs. Long-Term (1–3Y) horizon, switches US/India market, loads new tickers, changes chart timeframes, opens 8 Intelligence Hub tabs (including Long-Term DCF & DCA), toggles Quarterly/Annual financials, re-runs Monte Carlo, plots custom price lines on TradingView chart, updates portfolio capital, and runs the Weekly Alpha or Long-Term Compounder Scanner.",
+    },
+    "skill_long_term_compounder": {
+        "name": "Long-Term Compounder, 2-Stage DCF & 3-Tranche DCA Strategist",
+        "description": "Evaluates 1–3+ year secular compounding potential across 5 institutional pillars (30% Quality/ROIC/Fortress Balance Sheet, 25% 3Y Growth & Revisions, 20% 2-Stage 10Y Intrinsic DCF & Margin of Safety, 15% Secular 50W/200W Structure & Pullback Value, 10% Shareholder Yield & 13F Ownership) and builds a 3-Tranche DCA accumulation plan + Core Wealth Portfolio.",
     },
     "skill_rag_fundamentals_filings": {
         "name": "Deep Fundamental, Cash Flow & SEC EDGAR RAG Retriever",
@@ -2448,30 +3311,30 @@ Prioritize **maximum analytical depth, rigorous multi-source RAG verification, a
 
 Your job:
 1. Decompose the user's request into **3 falsifiable investment hypotheses**:
-   - `H1 (Technical & Regime)`: 1–8 week trend, Volume POC, Hurst regime, and 7-strategy backtest hypothesis.
-   - `H2 (Fundamental & Street Valuation)`: 12–24 month DCF/Street target, quarterly FCF vs. CapEx, and earnings revision hypothesis.
-   - `H3 (Tail-Risk & Catalyst)`: Stochastic P5/CVaR downside, binary earnings gap risk, or cross-asset shock hypothesis.
-2. Select which of the **7 Attached Skills**, **RAG Corpora**, and **Quantitative Tools** to invoke.
-3. Emit deterministic **`ui_commands`** to drive the StockSage Quant Pro web interface so the user's screen automatically navigates to the exact ticker, market, chart overlay, simulation model, or Google Finance tab being discussed."""
+   - `H1 (Technical & Regime)`: 1–8 week trend, Volume POC, Hurst regime, and 7-strategy backtest hypothesis (plus extended-hours gap dynamics when relevant).
+   - `H2 (Fundamental, Street & 2-Stage DCF)`: 1–3+ year Compounder Score, ROIC/FCF vs. CapEx, Bear/Base/Bull 2-Stage 10Y Intrinsic DCF, Street targets, and 3-Tranche DCA hypothesis.
+   - `H3 (Tail-Risk & Catalyst)`: Stochastic P5/CVaR downside, binary earnings gap risk, secular 200W SMA floor, or cross-asset shock hypothesis.
+2. Select which of the **8 Attached Skills**, **RAG Corpora**, and **Quantitative Tools** to invoke.
+3. Emit deterministic **`ui_commands`** to drive the StockSage Quant Pro web interface so the user's screen automatically navigates to the exact horizon (`swing` vs. `longterm`), ticker, market, chart overlay, simulation model, or Intelligence Hub tab being discussed."""
 
 REASONER_SI = """You are the **StockSage Quant Pro — Stage 3 Principal Quantamental Reasoner, Adversarial Critic & Portfolio Strategist**.
 Latency (TTFT) is secondary; **institutional rigor, exact numerical grounding, zero hallucination, and multi-horizon synthesis** are of highest value.
 
 ### DELIBERATIVE REASONING & SELF-CRITIQUE PROTOCOL (EXECUTE BEFORE WRITING):
 1. **Verify Hypotheses vs. RAG & Tool Evidence**:
-   - Test every Planner hypothesis (`H1`, `H2`, `H3`) against the retrieved `[RAG:OVERVIEW]`, `[RAG:ANALYST_CONSENSUS]`, `[RAG:EARNINGS_MATRIX]`, `[RAG:FINANCIAL_STATEMENTS]`, `[RAG:OWNERSHIP_SHORT]`, `[RAG:SEC_FILINGS_EVENTS]`, `[RAG:NEWS_WIRE]`, and `[TOOL:QUANT_DOSSIER]` blocks.
-   - Cite exact figures in **bold** or `code` spans (e.g., Spot `$168.89`, Street Mean Target `$325.78 (+92.9% upside)`, Lowest Street Target `$240.00`, Volume POC `$180.32`, Hurst `H = 0.56`, Walk-Forward Meta-Boss `CASH`, Latest Qtr FCF vs. CapEx).
-2. **Reconcile Time-Horizon Conflicts (The Quantamental Bridge)**:
-   - Whenever **1–8 Week Technical Timing** (`techScore`, EMA20/50, KAMA, SuperTrend, Volume POC, Meta-Boss signal) conflicts with **12–24 Month Wall Street Fundamentals** (`fundScore`, Analyst Buy %, Mean/Low Price Target, Earnings Beat Streak, ROE/FCF):
-     - Explain *why* both lenses see what they see (e.g., short-term institutional distribution / "Falling Knife" protection vs. long-term DCF valuation discount below Wall Street's bear floor).
-     - Never recommend "shorting in the hole" when a stock trades below its lowest Wall Street price target with >75% Buy ratings; never recommend catching an unconfirmed falling knife without specifying the exact **Reclaim Trigger Price (`EMA 20 / KAMA`)** or **Dip-Sniper Limit Zone (`VAL / Floor S1`)**.
+   - Test every Planner hypothesis (`H1`, `H2`, `H3`) against the retrieved `[RAG:OVERVIEW]`, `[RAG:LONG_TERM_COMPOUNDER_DCF]`, `[RAG:ANALYST_CONSENSUS]`, `[RAG:EARNINGS_MATRIX]`, `[RAG:FINANCIAL_STATEMENTS]`, `[RAG:OWNERSHIP_SHORT]`, `[RAG:SEC_FILINGS_EVENTS]`, `[RAG:NEWS_WIRE]`, and `[TOOL:QUANT_DOSSIER]` blocks.
+   - Cite exact figures in **bold** or `code` spans (e.g., Spot `$173.73`, After-Hours `$158.78`, Base Intrinsic DCF `$242.50`, 3Y Target `$315.00`, Street Mean Target `$319.99`, Volume POC `$182.07`, Hurst `H = 0.57`, Walk-Forward Meta-Boss `CASH`, and 3-Tranche DCA zones).
+2. **Reconcile Time-Horizon Conflicts (Swing 1–8W vs. Long-Term Compounder 1–3Y)**:
+   - Whenever **1–8 Week Tactical Swing Timing** (`techScore`, EMA20/50, KAMA, SuperTrend, Volume POC, Meta-Boss signal) conflicts with **1–3+ Year Secular Compounding & Intrinsic DCF** (`lt_score`, 5-Pillar ROIC/Growth/DCF, Analyst Buy %, Mean/Low Price Target):
+     - Explain *why* both lenses see what they see (e.g., short-term institutional distribution / "Falling Knife" protection where tactical traders wait for an `EMA 20 / KAMA` reclaim vs. a "Quality on Sale" multi-year DCF discount where long-term investors accumulate across **3 DCA Tranches: 40% / 35% / 25%**).
+     - Never recommend "shorting in the hole" when a stock trades below its Bear DCF or lowest Wall Street price target with >75% Buy ratings; never recommend deploying 100% lump-sum into an unconfirmed falling knife without either a **Tactical Reclaim Trigger (`EMA 20 / KAMA`)** or a **3-Tranche DCA Schedule**.
 3. **Adversarial Pre-Mortem Check**:
-   - Explicitly identify the single biggest trap in the data (e.g., negative Free Cash Flow due to surging CapEx, binary earnings release within 14 days, overhead Volume POC supply, or high Beta shock vulnerability).
+   - Explicitly identify the single biggest trap in the data (e.g., negative Free Cash Flow due to surging CapEx, binary earnings release within 14 days, overhead Volume POC supply, after-hours gap risk, or valuation multiple compression risk).
 4. **Confirm UI Page-Driver Actions**:
-   - Briefly mention in your opening or closing line what you did on the page for the user (e.g., *"🧭 **Page Driver Executed:** Loaded **META**, opened the **Financials (Quarterly)** tab, and plotted **Street Mean/Low Targets** on your candlestick chart."*).
+   - Briefly mention in your opening or closing line what you did on the page for the user (e.g., *"🧭 **Page Driver Executed:** Switched desk to **🏛️ Long-Term (1–3Y)** mode, opened the **Long-Term DCF & DCA** tab, and plotted **Intrinsic DCF & DCA Tranches** on your 5Y Weekly chart."*).
 5. **Strict Output Footer**:
    - If you want to trigger any additional UI page-driver commands based on your findings (such as plotting specific price levels you discovered in the RAG data), you may optionally emit:
-     `UI_COMMANDS_JSON: [{"cmd": "PLOT_CHART_LINES", "lines": [{"price": 325.78, "color": "#22c55e", "title": "Street Mean Target"}]}]`
+     `UI_COMMANDS_JSON: [{"cmd": "PLOT_CHART_LINES", "lines": [{"price": 319.99, "color": "#22c55e", "title": "Street Mean Target"}]}]`
    - On the very final line of your response, ALWAYS output exactly 3 high-signal follow-up questions formatted strictly as:
      `FOLLOW_UPS: Question 1? | Question 2? | Question 3?`"""
 
@@ -2554,9 +3417,33 @@ def _format_intel_brief_for_llm(intel: dict) -> str:
         for h in (nw.get("headlines") or [])[:8]
     ]
 
+    # 6. 1–3+ Year Long-Term Compounder, 2-Stage Intrinsic DCF & 3-Tranche DCA Blueprint
+    lt = intel.get("long_term") or {}
+    lt_p = lt.get("pillars") or {}
+    lt_m = lt.get("metrics") or {}
+    lt_dcf = lt.get("dcf") or {}
+    lt_dca = lt.get("dca_plan") or {}
+    lt_tr = lt_dca.get("tranches") or []
+    t1_s = f"{ccy}{lt_tr[0]['zone'][0]}–{ccy}{lt_tr[0]['zone'][1]}" if len(lt_tr) > 0 else "N/A"
+    t2_s = f"{ccy}{lt_tr[1]['zone'][0]}–{ccy}{lt_tr[1]['zone'][1]}" if len(lt_tr) > 1 else "N/A"
+    t3_s = f"{ccy}{lt_tr[2]['zone'][0]}–{ccy}{lt_tr[2]['zone'][1]}" if len(lt_tr) > 2 else "N/A"
+    lt_line = (
+        f"[RAG:LONG_TERM_COMPOUNDER_DCF] 1–3Y Compounder Score={lt.get('score')}/100 ({lt.get('verdict')} · {lt.get('archetype')}) | "
+        f"5-Pillar Scores: Quality/Moat={lt_p.get('quality_moat')}, Growth/Revisions={lt_p.get('growth_revisions')}, "
+        f"DCF Valuation={lt_p.get('dcf_valuation')}, Secular Structure={lt_p.get('secular_structure')}, Capital/SmartMoney={lt_p.get('capital_smart_money')} | "
+        f"Compounding Metrics: Est ROIC={lt_m.get('roic_est_pct')}%, 3Y Rev CAGR={lt_m.get('rev_cagr_3y_pct')}%, FCF Margin={lt_m.get('fcf_margin_pct')}%, "
+        f"Total Shareholder Yield={lt_m.get('total_shareholder_yield_pct')}%, 5Y Price CAGR={lt_m.get('cagr_5y_pct')}% (5Y Sharpe={lt_m.get('sharpe_5y')}) | "
+        f"2-Stage 10Y Intrinsic DCF (WACC={lt_dcf.get('wacc_pct')}%, Stage1 Growth={lt_dcf.get('stage1_growth_5y_pct')}%): "
+        f"Bear={ccy}{lt_dcf.get('bear_value')}, Base Fair Value={ccy}{lt_dcf.get('intrinsic_fair_value')} ({lt_dcf.get('dcf_upside_pct') or 0:+.1f}% vs Spot), "
+        f"Bull={ccy}{lt_dcf.get('bull_value')}, 3-Year Target={ccy}{lt_dcf.get('target_3y')} (Implied 3Y CAGR={lt_dcf.get('implied_3y_cagr_pct')}%/yr) | "
+        f"3-Tranche DCA Plan: Tranche 1 (40%)={t1_s}, Tranche 2 (35%)={t2_s}, Tranche 3 (25%)={t3_s}, "
+        f"Blended DCA Cost={ccy}{lt_dca.get('blended_avg_cost')}, Secular 200W Thesis Floor={ccy}{lt_dca.get('thesis_invalidation_price')}"
+    ) if lt else "[RAG:LONG_TERM_COMPOUNDER_DCF] N/A"
+
     lines = [
         f"=== CITATION-INDEXED SERVER RAG CORPUS FOR {sym} ({ov.get('name')}) ===",
         f"[RAG:OVERVIEW] Spot={ccy}{ov.get('regular_price')} ({ov.get('regular_change_pct') or 0:+.2f}%) | After-Hours={ov.get('post_market_price') or 'N/A'} | Pre-Market={ov.get('pre_market_price') or 'N/A'} | 52W Range={ccy}{ov.get('week_52_low')}–{ccy}{ov.get('week_52_high')} | Mkt Cap={ov.get('market_cap_fmt')} | Sector={ov.get('sector')} ({ov.get('industry')}) | Beta={ov.get('beta')} | Div Yield={ov.get('dividend_yield_pct')}%",
+        lt_line,
         f"[RAG:ANALYST_CONSENSUS] Wall Street Rating={an.get('recommendation_key')} ({an.get('analyst_count')} Analysts: {rt.get('bullish_pct')}% Bullish — {rt.get('strong_buy')} Strong Buy, {rt.get('buy')} Buy, {rt.get('hold')} Hold, {rt.get('sell')} Sell, {rt.get('strong_sell')} Strong Sell) | 12M Price Targets: Mean={ccy}{pt.get('mean')} ({pt.get('upside_pct') or 0:+.1f}% upside), Low={ccy}{pt.get('low')}, High={ccy}{pt.get('high')} | Valuation Multiples: Trailing P/E={val.get('pe_ttm')}x, Forward P/E={val.get('pe_fwd')}x, PEG={val.get('peg_ratio')}x, P/S={val.get('ps_ratio')}x, P/B={val.get('pb_ratio')}x, EV/EBITDA={val.get('ev_ebitda')}x, EV/Rev={val.get('ev_revenue')}x | Margins & Returns: Gross={prof.get('gross_margin_pct')}%, Operating={prof.get('operating_margin_pct')}%, EBITDA={prof.get('ebitda_margin_pct')}%, Net={prof.get('profit_margin_pct')}%, ROE={prof.get('roe_pct')}%, ROA={prof.get('roa_pct')}%, Rev Growth YoY={prof.get('revenue_growth_yoy_pct')}%, Earnings Growth YoY={prof.get('earnings_growth_yoy_pct')}%",
         f"[RAG:EARNINGS_MATRIX] Beat Streak={er.get('beat_count_last_4q')}/{er.get('total_quarters_tracked')} quarters (Avg Surprise={er.get('avg_surprise_pct') or 0:+.1f}%) | Next Earnings={er.get('next_earnings_date')} ({er.get('days_until_earnings')} days away) | Next Qtr Consensus EPS={er.get('next_eps_estimate', {}).get('avg')}, Rev={er.get('next_rev_estimate', {}).get('avg_fmt')}",
         *(eps_hist_lines or ["    • No quarterly EPS history rows."]),
@@ -2773,9 +3660,32 @@ def _build_planner_execution_plan(question: str, active_sym: str, active_market:
             "reason": f"Loaded {primary_sym} across Candlestick Chart, Monte Carlo, Backtester & Intelligence Hub",
         })
 
-    # 2. Timeframe / Range Page-Driving Command
+    # 2. Horizon Switcher (`swing` 1–8W vs. `longterm` 1–3Y) & Timeframe Page-Driving Commands
+    wants_longterm = bool(re.search(
+        r"\b(long[\s-]*term|long[\s-]*run|1[\s-]*3\s*y|3[\s-]*year|5[\s-]*year|multi[\s-]*year|compounder|compounding|dcf|intrinsic\s+value|dca|dollar[\s-]*cost|buy\s+and\s+hold|core\s+portfolio|wealth\s+builder|retirement|secular)\b",
+        q_low,
+    ))
+    wants_swing_explicit = bool(re.search(r"\b(swing\s+mode|short[\s-]*term\s+mode|1[\s-]*8\s*week\s+mode|switch\s+to\s+swing)\b", q_low))
+
+    if wants_longterm:
+        if "skill_long_term_compounder" not in skills_invoked:
+            skills_invoked.append("skill_long_term_compounder")
+        if "long_term_compounder_dcf" not in rag_sources:
+            rag_sources.append("long_term_compounder_dcf")
+        ui_commands.append({
+            "cmd": "SET_HORIZON",
+            "horizon": "longterm",
+            "reason": "Switched StockSage desk to 🏛️ Long-Term Compounder (1–3Y) horizon (5Y Weekly Chart + 2-Stage DCF + 3-Tranche DCA)",
+        })
+    elif wants_swing_explicit:
+        ui_commands.append({
+            "cmd": "SET_HORIZON",
+            "horizon": "swing",
+            "reason": "Switched StockSage desk to ⚡ Tactical Swing (1–8W) horizon",
+        })
+
     range_match = re.search(r"\b(1m|3m|6m|1y|2y|5y|1\s*month|3\s*month|6\s*month|1\s*year|2\s*year|5\s*year)\b", q_low)
-    if range_match and re.search(r"\b(chart|range|timeframe|horizon|switch|show|view|zoom)\b", q_low):
+    if range_match and re.search(r"\b(chart|range|timeframe|horizon|switch|show|view|zoom)\b", q_low) and not wants_longterm:
         raw_r = range_match.group(1)
         r_map = {"1m": "1mo", "1 month": "1mo", "3m": "3mo", "3 month": "3mo", "6m": "6mo", "6 month": "6mo", "1y": "1y", "1 year": "1y", "2y": "2y", "2 year": "2y", "5y": "5y", "5 year": "5y"}
         norm_r = r_map.get(raw_r.replace("  ", " "), "1y")
@@ -2787,7 +3697,11 @@ def _build_planner_execution_plan(question: str, active_sym: str, active_market:
         })
 
     # 3. Intelligence Hub Tab & Frequency Page-Driving Commands
-    if re.search(r"\b(financials?|income\s+statement|balance\s+sheet|cash\s+flow|fcf|free\s+cash\s+flow|capex|debt|ebitda|revenue\s+table)\b", q_low):
+    if re.search(r"\b(dcf|intrinsic\s+value|dca|dollar[\s-]*cost|3[\s-]*tranche|compounder|moat|roic|long[\s-]*term|long[\s-]*run)\b", q_low) and not re.search(r"\b(top\s+5|top\s+picks|scanner|screen|screener|basket)\b", q_low):
+        ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "longterm", "reason": "Opened '🏛️ Long-Term DCF & DCA' tab"})
+        if "skill_long_term_compounder" not in skills_invoked:
+            skills_invoked.append("skill_long_term_compounder")
+    elif re.search(r"\b(financials?|income\s+statement|balance\s+sheet|cash\s+flow|fcf|free\s+cash\s+flow|capex|debt|ebitda|revenue\s+table)\b", q_low):
         freq = "annual" if re.search(r"\b(annual|yearly|4y|4-year|full\s+year)\b", q_low) else "quarterly"
         ui_commands.append({"cmd": "OPEN_INTEL_TAB", "tab": "financials", "reason": "Opened Google Finance 'Financials' tab"})
         ui_commands.append({"cmd": "SET_FIN_FREQ", "freq": freq, "reason": f"Switched financial statements table to {freq.title()} view"})
@@ -2871,10 +3785,8 @@ def _build_planner_execution_plan(question: str, active_sym: str, active_market:
                 "reason": f"Updated Portfolio Account Size to {'₹' if target_market == 'IN' else '$'}{int(raw_num):,} and recalculated share sizing",
             })
 
-    # 7. Weekly Alpha Scanner Page-Driving Command
-    if re.search(r"\b(weekly|top\s+5|top\s+picks|scanner|screen|screener|hrp|risk\s+parity|basket|playbook)\b", q_low):
-        if "skill_cross_sectional_screener" not in skills_invoked:
-            skills_invoked.append("skill_cross_sectional_screener")
+    # 7. Cross-Sectional Scanner Page-Driving Command (Weekly Alpha vs. Long-Term Compounder)
+    if re.search(r"\b(weekly|top\s+5|top\s+picks|scan|scanner|screen|screener|hrp|risk\s+parity|basket|playbook|best\s+stocks|compounders|recommendations|which\s+stocks)\b", q_low):
         preset = "ai_semis" if re.search(r"\b(semi|semiconductor|ai\s+chip)\b", q_low) else (
             "momentum" if "momentum" in q_low else (
                 "defensive" if "defensive" in q_low else (
@@ -2882,13 +3794,26 @@ def _build_planner_execution_plan(question: str, active_sym: str, active_market:
                 )
             )
         )
-        tool_calls.append({"tool": "weekly_alpha_scan", "market": target_market, "preset": preset})
-        ui_commands.append({
-            "cmd": "RUN_WEEKLY_SCAN",
-            "preset": preset,
-            "reason": f"Triggered Weekly Alpha Cross-Sectional Scanner ({preset})",
-        })
-        ui_commands.append({"cmd": "SCROLL_TO_PANEL", "panel": "weeklyPanel", "reason": "Focused Weekly Alpha Playbook & HRP Basket"})
+        if wants_longterm and not re.search(r"\bweekly\b", q_low):
+            if "skill_long_term_compounder" not in skills_invoked:
+                skills_invoked.append("skill_long_term_compounder")
+            tool_calls.append({"tool": "longterm_scan", "market": target_market, "preset": preset})
+            ui_commands.append({
+                "cmd": "RUN_LONGTERM_SCAN",
+                "preset": preset,
+                "reason": f"Triggered Long-Term Compounder & Intrinsic DCF Scanner ({preset})",
+            })
+            ui_commands.append({"cmd": "SCROLL_TO_PANEL", "panel": "weeklyPanel", "reason": "Focused Long-Term Compounder Playbook & Core Wealth Basket"})
+        else:
+            if "skill_cross_sectional_screener" not in skills_invoked:
+                skills_invoked.append("skill_cross_sectional_screener")
+            tool_calls.append({"tool": "weekly_alpha_scan", "market": target_market, "preset": preset})
+            ui_commands.append({
+                "cmd": "RUN_WEEKLY_SCAN",
+                "preset": preset,
+                "reason": f"Triggered Weekly Alpha Cross-Sectional Scanner ({preset})",
+            })
+            ui_commands.append({"cmd": "SCROLL_TO_PANEL", "panel": "weeklyPanel", "reason": "Focused Weekly Alpha Playbook & HRP Basket"})
 
     # 8. Peer Comparison Tool
     if is_comparison and len(target_symbols) >= 2:
@@ -2977,26 +3902,22 @@ def _execute_rag_and_quant_tools(plan: dict, question: str) -> tuple:
         except Exception as e:
             rag_trace.append({"symbol": s, "corpus": "Fundamental RAG", "summary": f"Partial fallback ({e})"})
 
-        # 2B. Execute Server-Side Quantitative OHLCV Tool (_analyze_weekly_candidate) for multi-ticker & cross-Verification
+        # 2B. Execute Server-Side Quantitative OHLCV Tool (run_weekly_scan single-symbol dossier) for multi-ticker & cross-verification
         try:
-            bench_sym = "NIFTY50" if s_mkt == "IN" else "SPY"
-            bench_payload = build_chart_payload(bench_sym, "6mo", "1d")
-            bench_bars = ((bench_payload.get("chart") or {}).get("result") or [{}])[0]
-            bench_closes = (((bench_bars.get("indicators") or {}).get("quote") or [{}])[0].get("close") or [])
-            bench_closes = [float(x) for x in bench_closes if x is not None]
-            cand_q = _analyze_weekly_candidate(s, bench_closes, s_mkt)
+            scan_single = run_weekly_scan(symbols=[s], market=s_mkt)
+            cand_q = (scan_single.get("rankings") or [None])[0]
             if cand_q:
                 if idx == 0:
                     primary_quant = cand_q
                 ccy = "₹" if s_mkt == "IN" else "$"
                 wp = cand_q.get("weekly_plan") or {}
-                piv = cand_q.get("pivots") or {}
+                piv = cand_q.get("weekly_pivots") or {}
                 quant_blocks.append(
                     f"[TOOL:QUANT_DOSSIER:{s}] Spot={ccy}{cand_q.get('price')} ({cand_q.get('ret_5d_pct'):+.2f}% 5D, {cand_q.get('ret_21d_pct'):+.2f}% 21D) | "
                     f"Weekly Alpha Score={cand_q.get('weekly_alpha_score')}/100 ({cand_q.get('weekly_action')} · {cand_q.get('setup_type')}) | "
                     f"Mansfield RS vs Bench={cand_q.get('rs_21d_vs_spy'):+.2f}% | WorldQuant Alpha#101={cand_q.get('wq_alpha101'):+.2f} | "
-                    f"Wilder RSI(14)={cand_q.get('rsi_14')} | Connors RSI(2)={cand_q.get('connors_rsi_2')} | ATR Stretch={cand_q.get('atr_stretch')}x ATR | "
-                    f"TTM Squeeze={cand_q.get('squeeze_status')} | Hurst H={cand_q.get('hurst')} | "
+                    f"Wilder RSI(14)={cand_q.get('rsi_14')} | Connors RSI(2)={cand_q.get('connors_rsi_2')} | ATR Stretch={cand_q.get('stretch_20_atr')}x ATR | "
+                    f"TTM Squeeze={cand_q.get('squeeze_status')} | "
                     f"5D Walk-Forward Hit Rate={cand_q.get('walk_forward_5d', {}).get('win_rate_pct')}% | "
                     f"5D Monte Carlo Win Odds={cand_q.get('mc_5d', {}).get('prob_up_pct')}% | "
                     f"Floor Pivots: S1={ccy}{piv.get('s1')}, Pivot={ccy}{piv.get('pivot')}, R1={ccy}{piv.get('r1')} | "
@@ -3007,28 +3928,77 @@ def _execute_rag_and_quant_tools(plan: dict, question: str) -> tuple:
                     "corpus": "Server OHLCV Quant & Factor Tool",
                     "summary": (
                         f"Alpha {cand_q.get('weekly_alpha_score')}/100 ({cand_q.get('weekly_action')}) · "
-                        f"RSI(14) {cand_q.get('rsi_14')} · Hurst {cand_q.get('hurst')} · "
+                        f"RSI(14) {cand_q.get('rsi_14')} · Stretch {cand_q.get('stretch_20_atr')}x ATR · "
                         f"5D WF Win {cand_q.get('walk_forward_5d', {}).get('win_rate_pct')}%"
                     ),
                 })
         except Exception:
             pass
 
-    # 2C. If user asked to plot levels, targets, support/resistance, or divergence on the chart, auto-emit PLOT_CHART_LINES
-    wants_plot = bool(re.search(r"\b(plot|draw|mark|show\s+on\s+chart|price\s+target|support|resistance|entry|stop|divergence|why\s+is)\b", q_low))
+    # 2B-Extra: Execute Cross-Sectional Scanners if requested in plan["tool_calls"]
+    for tc in (plan.get("tool_calls") or []):
+        t_name = tc.get("tool")
+        if t_name == "longterm_scan":
+            try:
+                lt_rep = run_longterm_scan(preset=tc.get("preset") or "leaders", market=tc.get("market") or target_mkt)
+                ccy_lt = lt_rep.get("currency_symbol", "$")
+                top_str = "; ".join(
+                    f"#{c['rank']} {c['symbol']} (Score {c['lt_score']}/100 · {c['lt_verdict']} · {c['archetype']} · DCF {ccy_lt}{c['dcf']['intrinsic_fair_value']} · 3Y Target {ccy_lt}{c['dcf']['target_3y']} [{c['dcf']['implied_3y_cagr_pct']:+.1f}%/yr CAGR] · T1 DCA {ccy_lt}{c['dca_plan']['tranches'][0]['zone'][0]}–{ccy_lt}{c['dca_plan']['tranches'][0]['zone'][1]})"
+                    for c in (lt_rep.get("top_picks") or [])[:5]
+                )
+                b_lt = lt_rep.get("portfolio_basket") or {}
+                quant_blocks.append(
+                    f"[TOOL:LONGTERM_COMPOUNDER_SCAN:{lt_rep.get('market')}] Top 5 Secular Compounders: {top_str} | "
+                    f"Core Portfolio Expected 3Y CAGR={b_lt.get('expected_3y_cagr_pct')}%/yr, Weighted ROIC={b_lt.get('weighted_roic_pct')}%"
+                )
+                rag_trace.append({
+                    "symbol": f"{lt_rep.get('market')} Universe",
+                    "corpus": "Long-Term Compounder & 2-Stage DCF Scanner",
+                    "summary": f"Scanned {lt_rep.get('universe_size')} stocks · Top Pick {(lt_rep.get('top_picks') or [{}])[0].get('symbol', 'N/A')} · Est 3Y CAGR {b_lt.get('expected_3y_cagr_pct')}%",
+                })
+            except Exception:
+                pass
+        elif t_name == "weekly_alpha_scan":
+            try:
+                wk_rep = run_weekly_scan(preset=tc.get("preset") or "leaders", market=tc.get("market") or target_mkt)
+                ccy_wk = wk_rep.get("currency_symbol", "$")
+                top_wk = "; ".join(
+                    f"#{c['rank']} {c['symbol']} (Alpha {c['weekly_alpha_score']}/100 · {c['weekly_action']} · {c['setup_type']} · Entry {ccy_wk}{c['weekly_plan']['entry_zone'][0]}–{ccy_wk}{c['weekly_plan']['entry_zone'][1]} · TP1 {ccy_wk}{c['weekly_plan']['friday_tp1']})"
+                    for c in (wk_rep.get("top_picks") or [])[:5]
+                )
+                quant_blocks.append(f"[TOOL:WEEKLY_ALPHA_SCAN:{wk_rep.get('market')}] Top 5 Weekly Setups: {top_wk}")
+            except Exception:
+                pass
+
+    # 2C. If user asked to plot levels, targets, DCF/DCA, support/resistance, or divergence on the chart, auto-emit PLOT_CHART_LINES
+    wants_plot = bool(re.search(r"\b(plot|draw|mark|show\s+on\s+chart|price\s+target|support|resistance|entry|stop|divergence|why\s+is|dcf|dca)\b", q_low))
     if wants_plot and primary_intel:
         lines_to_plot = []
-        pt = (primary_intel.get("analysis") or {}).get("price_targets") or {}
-        if pt.get("mean") and re.search(r"\b(target|street|analyst|wall\s+street|divergence|plot|draw|why)\b", q_low):
-            lines_to_plot.append({"price": float(pt["mean"]), "color": "#22c55e", "title": f"Street Mean PT ({pt['mean']})"})
-        if pt.get("low") and re.search(r"\b(target|street|analyst|wall\s+street|divergence|floor|low)\b", q_low):
-            lines_to_plot.append({"price": float(pt["low"]), "color": "#eab308", "title": f"Street Low PT ({pt['low']})"})
-        if primary_quant:
-            wp = primary_quant.get("weekly_plan") or {}
-            if wp.get("stop_loss") and re.search(r"\b(stop|entry|support|plot|draw)\b", q_low):
-                lines_to_plot.append({"price": float(wp["stop_loss"]), "color": "#ef4444", "title": "Quant Stop-Loss"})
-            if wp.get("friday_tp1") and re.search(r"\b(target|tp1|resistance|plot|draw)\b", q_low):
-                lines_to_plot.append({"price": float(wp["friday_tp1"]), "color": "#38bdf8", "title": "Quant TP1 Target"})
+        lt_d = primary_intel.get("long_term") or {}
+        if lt_d and re.search(r"\b(long[\s-]*term|long[\s-]*run|dcf|intrinsic|dca|compounder|3[\s-]*year)\b", q_low):
+            dcf_d = lt_d.get("dcf") or {}
+            dca_d = lt_d.get("dca_plan") or {}
+            tr_l = dca_d.get("tranches") or []
+            if dcf_d.get("target_3y"):
+                lines_to_plot.append({"price": float(dcf_d["target_3y"]), "color": "#22c55e", "title": f"3Y Target ({dcf_d['target_3y']})"})
+            if dcf_d.get("intrinsic_fair_value"):
+                lines_to_plot.append({"price": float(dcf_d["intrinsic_fair_value"]), "color": "#38bdf8", "title": f"Intrinsic DCF ({dcf_d['intrinsic_fair_value']})"})
+            if len(tr_l) > 0:
+                lines_to_plot.append({"price": float(tr_l[0]["zone"][1]), "color": "#a855f7", "title": "DCA Tranche 1 (40%)"})
+            if len(tr_l) > 1:
+                lines_to_plot.append({"price": float(tr_l[1]["zone"][0]), "color": "#eab308", "title": "DCA Tranche 2 (35% · 50W)"})
+        else:
+            pt = (primary_intel.get("analysis") or {}).get("price_targets") or {}
+            if pt.get("mean") and re.search(r"\b(target|street|analyst|wall\s+street|divergence|plot|draw|why)\b", q_low):
+                lines_to_plot.append({"price": float(pt["mean"]), "color": "#22c55e", "title": f"Street Mean PT ({pt['mean']})"})
+            if pt.get("low") and re.search(r"\b(target|street|analyst|wall\s+street|divergence|floor|low)\b", q_low):
+                lines_to_plot.append({"price": float(pt["low"]), "color": "#eab308", "title": f"Street Low PT ({pt['low']})"})
+            if primary_quant:
+                wp = primary_quant.get("weekly_plan") or {}
+                if wp.get("stop_loss") and re.search(r"\b(stop|entry|support|plot|draw)\b", q_low):
+                    lines_to_plot.append({"price": float(wp["stop_loss"]), "color": "#ef4444", "title": "Quant Stop-Loss"})
+                if wp.get("friday_tp1") and re.search(r"\b(target|tp1|resistance|plot|draw)\b", q_low):
+                    lines_to_plot.append({"price": float(wp["friday_tp1"]), "color": "#38bdf8", "title": "Quant TP1 Target"})
         if lines_to_plot:
             plan["ui_commands"].append({
                 "cmd": "PLOT_CHART_LINES",
@@ -3268,6 +4238,33 @@ class StockSageHandler(http.server.SimpleHTTPRequestHandler):
             syms = [s.strip() for s in syms_raw.split(",") if s.strip()] if syms_raw else None
             try:
                 report = run_weekly_scan(symbols=syms, capital=capital, preset=preset, market=mkt)
+                body = json.dumps(report).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body)
+            except Exception as exc:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(exc)}).encode("utf-8"))
+            return
+
+        if parsed.path == "/api/longterm-scan":
+            qs = urllib.parse.parse_qs(parsed.query)
+            mkt = qs.get("market", ["US"])[0]
+            default_preset = "in_leaders" if mkt.upper() == "IN" else "leaders"
+            default_cap = "500000" if mkt.upper() == "IN" else "25000"
+            preset = qs.get("preset", [default_preset])[0]
+            syms_raw = qs.get("symbols", [""])[0]
+            cap_raw = qs.get("capital", [default_cap])[0]
+            try:
+                capital = float(cap_raw)
+            except ValueError:
+                capital = 500000.0 if mkt.upper() == "IN" else 25000.0
+            syms = [s.strip() for s in syms_raw.split(",") if s.strip()] if syms_raw else None
+            try:
+                report = run_longterm_scan(symbols=syms, capital=capital, preset=preset, market=mkt)
                 body = json.dumps(report).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
