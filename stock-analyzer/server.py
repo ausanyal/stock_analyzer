@@ -39,7 +39,7 @@ _INTEL_CACHE = {}
 _LT_FAST_CACHE = {}
 _LT_SCAN_CACHE = {}
 _YAHOO_SESSION = {"cookie": "", "crumb": "", "ts": 0.0}
-_GCP_META_CACHE = {"token": "", "project": "", "exp": 0.0}
+_GCP_META_CACHE = {"token": "", "project": "", "exp": 0.0, "cooldown_until": 0.0}
 
 IST_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
@@ -3241,8 +3241,12 @@ def _get_gcp_vertex_auth() -> tuple:
     with _CACHE_LOCK:
         if _GCP_META_CACHE["token"] and (now < _GCP_META_CACHE["exp"] - 60):
             return _GCP_META_CACHE["token"], _GCP_META_CACHE["project"]
+        if now < _GCP_META_CACHE.get("cooldown_until", 0.0):
+            return "", (_GCP_META_CACHE.get("project") or "natural-name-407402")
 
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCLOUD_PROJECT") or ""
+    is_gcp_env = bool(os.environ.get("K_SERVICE") or project_id)
+    meta_timeout = 1.8 if is_gcp_env else 0.4
     token = ""
     meta_headers = {"Metadata-Flavor": "Google"}
     try:
@@ -3251,13 +3255,13 @@ def _get_gcp_vertex_auth() -> tuple:
                 "http://metadata.google.internal/computeMetadata/v1/project/project-id",
                 headers=meta_headers,
             )
-            with urllib.request.urlopen(req_p, timeout=1.5) as rp:
+            with urllib.request.urlopen(req_p, timeout=meta_timeout) as rp:
                 project_id = rp.read().decode("utf-8").strip()
         req_t = urllib.request.Request(
             "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
             headers=meta_headers,
         )
-        with urllib.request.urlopen(req_t, timeout=1.5) as rt:
+        with urllib.request.urlopen(req_t, timeout=meta_timeout) as rt:
             td = json.loads(rt.read().decode("utf-8"))
             token = td.get("access_token") or ""
             expires_in = float(td.get("expires_in") or 1800.0)
@@ -3266,8 +3270,11 @@ def _get_gcp_vertex_auth() -> tuple:
                     _GCP_META_CACHE["token"] = token
                     _GCP_META_CACHE["project"] = project_id or "natural-name-407402"
                     _GCP_META_CACHE["exp"] = now + expires_in
+                    _GCP_META_CACHE["cooldown_until"] = 0.0
     except Exception:
-        pass
+        with _CACHE_LOCK:
+            # Fast-skip metadata probing for 2 minutes on local laptops, while avoiding permanent lockouts on Cloud Run cold starts
+            _GCP_META_CACHE["cooldown_until"] = now + (5.0 if is_gcp_env else 120.0)
     return token, (project_id or "natural-name-407402")
 
 
@@ -3544,10 +3551,14 @@ def _call_gemini_llm(
                     err_b = he.read().decode("utf-8", errors="ignore")
                     if "SERVICE_DISABLED" in err_b or "has not been used in project" in err_b:
                         last_diag = f"Vertex AI API (aiplatform.googleapis.com) is not enabled yet on project {gcp_proj}."
+                        with _CACHE_LOCK:
+                            _GCP_META_CACHE["cooldown_until"] = time.time() + 300.0
                         api_disabled_abort = True
                         break
                     if he.code == 403 and "PERMISSION_DENIED" in err_b:
                         last_diag = f"Cloud Run service account needs roles/aiplatform.user on project {gcp_proj}."
+                        with _CACHE_LOCK:
+                            _GCP_META_CACHE["cooldown_until"] = time.time() + 300.0
                         api_disabled_abort = True
                         break
                     last_diag = f"Vertex AI ({loc}/{m}) HTTP {he.code}"
@@ -4011,6 +4022,661 @@ def _execute_rag_and_quant_tools(plan: dict, question: str) -> tuple:
     return rag_blocks, quant_blocks, rag_trace
 
 
+def _extract_live_telemetry_highlights(client_telemetry: str, sym: str, market: str) -> dict:
+    """Extracts lightweight live snapshot numbers from client_telemetry in <0.1ms without network calls."""
+    ccy = "₹" if market == "IN" else "$"
+    snap = {
+        "sym": sym,
+        "ccy": ccy,
+        "spot": "",
+        "score": "",
+        "verdict": "",
+        "hurst": "",
+        "regime": "",
+        "poc": "",
+        "val": "",
+        "vah": "",
+        "mc_win": "",
+        "mc_cvar": "",
+        "lt_score": "",
+        "lt_verdict": "",
+        "base_dcf": "",
+        "wacc": "",
+        "target_3y": "",
+        "ext_line": "",
+    }
+    if not client_telemetry:
+        return snap
+    m_spot = re.search(r"Spot Price:\s*([^\s|]+)\s*\|\s*Active Proposal Score:\s*([0-9]+/100).*?\|\s*Action Verdict:\s*([^\n(]+)", client_telemetry)
+    if m_spot:
+        snap["spot"] = m_spot.group(1).strip()
+        snap["score"] = m_spot.group(2).strip()
+        snap["verdict"] = m_spot.group(3).strip()
+    m_h = re.search(r"Hurst H=([0-9.]+)\s*\(([^)]+)\)", client_telemetry)
+    if m_h:
+        snap["hurst"] = m_h.group(1).strip()
+        snap["regime"] = m_h.group(2).strip()
+    m_vp = re.search(r"POC=([^\s,]+),\s*Value Area Low \(VAL\)=([^\s,]+),\s*Value Area High \(VAH\)=([^\s,\n]+)", client_telemetry)
+    if m_vp:
+        snap["poc"], snap["val"], snap["vah"] = m_vp.group(1), m_vp.group(2), m_vp.group(3)
+    m_mc = re.search(r"Win Probability=([0-9.]+%).*?5% Expected Shortfall \(CVaR\)=([^\n]+)", client_telemetry)
+    if m_mc:
+        snap["mc_win"] = m_mc.group(1).strip()
+        snap["mc_cvar"] = m_mc.group(2).strip()
+    m_lt = re.search(r"Long-Term Compounder & 2-Stage DCF \(1–3Y\):\s*Score=([0-9]+/100)\s*\(([^,)]+)", client_telemetry)
+    if m_lt:
+        snap["lt_score"] = m_lt.group(1).strip()
+        snap["lt_verdict"] = m_lt.group(2).strip()
+    m_dcf = re.search(r"BaseDCF=([^\s(]+)\s*\(([^)]+)\).*?3YTarget=([^\s(]+)", client_telemetry)
+    if m_dcf:
+        snap["base_dcf"] = f"{m_dcf.group(1)} ({m_dcf.group(2)})"
+        snap["target_3y"] = m_dcf.group(3).strip()
+    m_ext = re.search(r"Extended-Hours Tape \(([^)]+)\):\s*Price=([^\s|]+)", client_telemetry)
+    if m_ext:
+        snap["ext_line"] = f"{m_ext.group(1)} {m_ext.group(2)}"
+    return snap
+
+
+def detect_stock_concept_topic(q_low: str) -> str:
+    """Maps general equity, valuation, quant, risk, and portfolio questions to 16 rich conceptual topics."""
+    topic_rules = [
+        ("swing_vs_longterm", r"((?:swing|short[\s-]*term).*?long[\s-]*term|long[\s-]*term.*?(?:swing|short[\s-]*term)|\bfalling\s+knife\b|\bquality\s+on\s+sale\b|\btime[\s-]*horizon\s+conflict\b|avoid.*entry\s+zone|\btrading\s+(?:vs|versus|or)\s+investing\b)"),
+        ("dcf_intrinsic_value", r"\b(dcf|discounted\s+cash\s+flow|2[\s-]*stage\s+dcf|intrinsic\s+val(?:ue|uation)|wacc|terminal\s+growth|margin\s+of\s+safety|free\s+cash\s+flow\s+valuation)\b"),
+        ("dca_vs_lumpsum", r"\b(dca|dollar[\s-]*cost\s+averag|tranche|lump[\s-]*sum|scale\s+in|scaling\s+in|sip\s+(?:vs|or)\s+lump)\b"),
+        ("valuation_multiples", r"\b(p/?e\s+ratio|trailing\s+p/?e|forward\s+p/?e|peg\s+ratio|ev/?ebitda|price[\s-]*to[\s-]*earnings|price[\s-]*to[\s-]*sales|roic|return\s+on\s+invested\s+capital|value\s+trap|fcf\s+yield)\b"),
+        ("hurst_regime", r"\b(hurst|mean[\s-]*rever(?:t|sion)|trending\s+regime|random\s+walk|regime\s+detection|h\s*=\s*0\.\d+)\b"),
+        ("monte_carlo_merton", r"\b(monte\s+carlo|merton|jump[\s-]*diffusion|gbm|geometric\s+brownian|bootstrap\s+sim|cvar|expected\s+shortfall|value\s+at\s+risk|var\s+95|bear\s+tail|fat\s+tail)\b"),
+        ("volume_profile_poc", r"\b(volume\s+profile|point\s+of\s+control|\bpoc\b|\bvah\b|\bval\b|value\s+area|overhead\s+supply|high[\s-]*volume\s+node)\b"),
+        ("momentum_oscillators", r"\b(rsi|connors\s+rsi|macd|ttm\s+squeeze|bollinger|kaufman|\bkama\b|supertrend|ehlers|adx|moving\s+average|ema\s*20|death\s+cross|golden\s+cross)\b"),
+        ("position_sizing_kelly", r"\b(kelly\s+criterion|half[\s-]*kelly|position\s+siz|1%\s+risk|chandelier\s+stop|atr\s+stop|r[\s-]*multiple|risk[\s-]*reward|stop[\s-]*loss\s+work)\b"),
+        ("risk_adjusted_ratios", r"\b(sharpe|sortino|calmar|jensen'?s?\s+alpha|capm|\bbeta\b|risk[\s-]*adjusted\s+return|max\s+drawdown)\b"),
+        ("hrp_portfolio", r"\b(hrp|hierarchical\s+risk\s+parity|risk\s+parity|inverse[\s-]*volatility|equal[\s-]*weight\s+vs|portfolio\s+diversification|how\s+many\s+stocks)\b"),
+        ("earnings_pead_ext", r"\b(pead|post[\s-]*earnings|earnings\s+drift|earnings\s+surprise|earnings\s+gap|after[\s-]*hours|pre[\s-]*market|extended[\s-]*hours)\b"),
+        ("smart_money_filings", r"\b(13f|form\s*4|insider\s+buy|insider\s+sell|short\s+interest|short\s+squeeze|short\s+float|10[\s-]*k|10[\s-]*q|8[\s-]*k|institutional\s+ownership)\b"),
+        ("trading_psychology_taxes", r"\b(fomo|loss\s+aversion|disposition\s+effect|psychology|emotional\s+trading|revenge\s+trading|ltcg|stcg|capital\s+gains\s+tax|wash\s+sale|tax[\s-]*loss\s+harvest)\b"),
+        ("etfs_vs_stocks", r"\b(etfs?\s+(?:vs|versus|or)\s+(?:individual\s+)?stocks?|index\s+fund|core[\s-]*satellite|passive\s+(?:vs|or)\s+active|nifty\s+bees|s&p\s*500\s+index)\b"),
+        ("macro_rates_beginner", r"\b(interest\s+rates?|fed\s+rate|rbi\s+repo|inflation\s+affect|bond\s+yields?|how\s+to\s+start\s+investing|beginner\s+stock|when\s+to\s+sell\s+a\s+stock)\b"),
+    ]
+    for topic_id, pattern in topic_rules:
+        if re.search(pattern, q_low):
+            return topic_id
+    return ""
+
+
+def classify_chat_query_kind(question: str, active_sym: str, active_market: str, history: list) -> tuple:
+    """
+    Stage 0 Conversational & Conceptual NLP Router.
+    Classifies user prompts into 5 distinct conversational/analytical lanes:
+      1. ("conversational_meta", subtopic)       -> Greetings, "can i ask u stock questions?", thanks
+      2. ("follow_up", "follow_up")              -> Multi-turn "give me an example", "simplify that", "tell me more"
+      3. ("conceptual_investing", topic_id)      -> 16 equity/quant/valuation/risk concepts in warm prose
+      4. ("conversational_stock_check", "")      -> Casual single-ticker questions ("what do you think of NVDA?")
+      5. ("quant_deep_dive", "")                 -> Multi-ticker compares, UI page-driver actions, scanners, deep audits
+    """
+    q_clean = re.sub(r"\s+", " ", question).strip()
+    q_low = q_clean.lower()
+    q_up = q_clean.upper()
+
+    # Detect explicitly mentioned equity tickers (excluding common English & indicator acronyms)
+    us_known = set(
+        [t for lst in WEEKLY_PRESETS.values() for t in lst]
+        + ["TSM", "ASML", "SMCI", "ARM", "INTC", "MU", "QCOM", "SNOW", "UBER", "ABNB", "SHOP", "PANW", "CRWD", "PYPL", "SQ", "DIS", "NKE", "BA", "BABA", "PDD", "MELI"]
+    )
+    in_known = set([t for lst in INDIA_WEEKLY_PRESETS.values() for t in lst] + list(INDIA_COMPANY_SLUGS.keys()))
+    known_tickers = us_known | in_known | {active_sym}
+    stop_words = {
+        "BUY", "SELL", "HOLD", "WAIT", "AVOID", "LONG", "SHORT", "CASH", "ETF", "ETFS", "USD", "INR", "NSE", "BSE", "NYSE",
+        "PE", "PEG", "EPS", "FCF", "ROE", "ROA", "ROIC", "WACC", "EMA", "SMA", "RSI", "MACD", "ATR", "ADX", "VWAP", "POC", "VAH", "VAL",
+        "VAR", "CVAR", "MC", "GBM", "HRP", "SEC", "CEO", "CFO", "YOY", "QOQ", "TTM", "NTM", "DCF", "DCA", "SIP", "IPO", "AI", "US", "IN",
+        "IT", "IS", "OR", "ON", "AT", "TO", "BY", "OF", "VS", "MY", "ME", "WE", "DO", "GO", "SO", "UP", "NO", "OK", "HI", "HEY", "CAN", "WHY", "HOW",
+        "ALL", "AND", "ARE", "FOR", "NOW", "NEW", "TOP", "LOW", "HIGH", "THE", "YOU", "WHAT", "WHEN", "WITH", "SHOW", "OPEN", "PLOT", "RUN",
+        "LTCG", "STCG", "FOMO", "PEAD", "CAPM", "ELI5", "TLDR", "KAMA",
+    }
+    mentioned_tickers = []
+    for tok in re.findall(r"\b[A-Z&\-]{1,12}\b", q_up):
+        if tok in stop_words:
+            continue
+        if tok in known_tickers and tok not in mentioned_tickers:
+            mentioned_tickers.append(tok)
+    other_tickers = [t for t in mentioned_tickers if t != active_sym]
+
+    # 1. Explicit UI Page-Driver, Multi-Ticker Compare, Scanner, Simulation, or Deep Statement Audit -> quant_deep_dive
+    hard_quant_rx = (
+        r"\b(compare|vs\.?|versus|head[\s-]*to[\s-]*head|stress[\s-]*test|confluence\s+matrix|multi[\s-]*timeframe|"
+        r"plot|draw|mark\s+on\s+chart|re[\s-]*simulate|run\s+\d+\s*(?:monte\s+carlo|paths)|"
+        r"open\s+.*?\btab\b|switch\s+(?:to|desk|market|horizon)|load\s+[a-z]{1,10}|pull\s+up\s+[a-z]{1,10}|"
+        r"set\s+(?:my\s+)?(?:capital|account|portfolio)|scan|scanner|screener|which\s+stocks|top\s+compounders|"
+        r"build\s+(?:a|an|my)\s+(?:portfolio|basket)|audit\s+|factor\s+weights|income\s+statement|balance\s+sheet\s+of|"
+        r"quarterly\s+revenue|5[\s-]*quarter)\b"
+    )
+    if len(mentioned_tickers) >= 2:
+        return ("quant_deep_dive", "")
+    if re.search(hard_quant_rx, q_low):
+        # Allow conceptual "swing vs long-term", "DCA vs lump sum", "ETF vs stocks", "equal-weight vs HRP" to stay conceptual
+        if not (len(mentioned_tickers) == 0 and detect_stock_concept_topic(q_low)):
+            return ("quant_deep_dive", "")
+
+    # 2. Gratitude / Short Acknowledgment -> conversational_meta (thanks)
+    if len(q_clean) <= 70 and not re.search(r"\b(what|how|why|should|can|compare|explain|is|are)\b|\?", q_low):
+        if re.search(r"\b(thanks|thank\s+you|thx|ty|got\s+it|makes\s+sense|awesome|perfect|great|appreciate\s+it|understood|helpful)\b", q_low):
+            return ("conversational_meta", "thanks")
+
+    # 3. Casual Greetings & Meta / Capability Checks -> conversational_meta (greeting_or_capabilities)
+    if len(q_clean) <= 50 and re.match(
+        r"^(hi|hello|hey|yo|howdy|namaste|good\s+(?:morning|afternoon|evening)|hi\s+there|hey\s+there|hello\s+there|hey\s+copilot|hi\s+copilot)[!.,?\s]*$",
+        q_low,
+    ):
+        return ("conversational_meta", "greeting_or_capabilities")
+
+    meta_cap_rx = (
+        r"\b(can\s+i\s+ask\s+(?:u|you)|may\s+i\s+ask\s+(?:u|you)|can\s+we\s+(?:chat|talk)|"
+        r"are\s+(?:u|you)\s+conversational|talk\s+like\s+a\s+(?:human|person|advisor)|"
+        r"what\s+can\s+(?:u|you)\s+(?:do|help\s+with|answer)|what\s+can\s+i\s+ask|"
+        r"who\s+are\s+(?:u|you)|what\s+are\s+(?:u|you)|how\s+do\s+i\s+use\s+(?:this|you)|"
+        r"help\s+me\s+get\s+started|do\s+(?:u|you)\s+answer\s+(?:general|normal|regular|nlp|stock|investing))\b"
+    )
+    if re.search(meta_cap_rx, q_low):
+        return ("conversational_meta", "greeting_or_capabilities")
+
+    # 4. Short Multi-Turn Follow-Ups ("give me an example", "simplify that", "tell me more", "yes", "why?") -> follow_up
+    if history and len(other_tickers) == 0 and len(q_clean) <= 90:
+        if re.match(
+            r"^(yes|yeah|yep|yup|sure|ok|okay|please|please\s+do|go\s+ahead|tell\s+me\s+more|more\s+details?|elaborate|go\s+deeper|keep\s+going|why|why\s+is\s+that|how\s+so|what\s+does\s+that\s+mean|what'?s\s+the\s+catch)[!.,?\s]*$",
+            q_low,
+        ) or re.search(
+            r"\b(give\s+me\s+(?:a|an)\s+(?:simple\s+)?example|for\s+example|can\s+(?:u|you)\s+give\s+an\s+example|"
+            r"walk\s+me\s+through\s+an\s+example|simplify(?:\s+that|\s+this|\s+it)?|in\s+simple\s+(?:words|terms)|"
+            r"in\s+plain\s+english|explain\s+like\s+i'?m\s+5|\beli5\b|\btl;?dr\b|shorter\s+version|summarize\s+(?:that|this|it))\b",
+            q_low,
+        ):
+            return ("follow_up", "follow_up")
+
+    # 5. Conceptual Investing, Valuation, Quant & Portfolio Questions -> conceptual_investing
+    concept_topic = detect_stock_concept_topic(q_low)
+    is_concept_phrasing = bool(
+        re.search(
+            r"\b(what\s+is|what'?s\s+(?:a|an|the)|what\s+are|what\s+does\s+.*?\s+mean|how\s+does\s+.*?\s+work|"
+            r"explain\b|meaning\s+of|difference\s+between|why\s+do\s+(?:traders|investors|quants)|"
+            r"how\s+do\s+i\s+read|how\s+to\s+use|should\s+i\s+dca\s+or|lump\s+sum\s+or\s+dca|etfs?\s+or\s+stocks?)\b",
+            q_low,
+        )
+    )
+    if concept_topic and (len(mentioned_tickers) == 0 or (is_concept_phrasing and not other_tickers and f"{active_sym.lower()}'s" not in q_low and f"for {active_sym.lower()}" not in q_low)):
+        return ("conceptual_investing", concept_topic)
+
+    # Catch-all for general stock/investing questions with zero ticker mentioned ("how do i pick good long term stocks?", "when should i sell a loser?")
+    if len(mentioned_tickers) == 0 and re.search(
+        r"\b(stocks?|investing|invest|investor|market|markets|portfolio|compounding|dividends?|valuation|bull\s+market|bear\s+market|correction|pullback)\b",
+        q_low,
+    ) and not re.search(r"\b(this\s+stock|current\s+stock|right\s+now\s+on\s+chart|on\s+screen|should\s+i\s+buy\s+now)\b", q_low):
+        return ("conceptual_investing", concept_topic or "macro_rates_beginner")
+
+    # 6. Casual Single-Stock Checkup ("what do you think of NVDA?", "is AAPL a good buy?", "why avoid/wait?")
+    return ("conversational_stock_check", "")
+
+
+def build_conversational_advisor_turn(
+    question: str,
+    query_kind: str,
+    subtopic: str,
+    sym: str,
+    market: str,
+    mode: str,
+    client_telemetry: str,
+    history: list,
+) -> tuple:
+    """
+    Produces warm, natural first-person advisor prose (with zero unsolicited KPI tables and zero <details> clutter)
+    plus 3 contextual follow-up suggestions for conversational_meta, follow_up, and 16 conceptual_investing topics.
+    """
+    snap = _extract_live_telemetry_highlights(client_telemetry, sym, market)
+    desk_lbl = "🇮🇳 NSE India" if market == "IN" else "🇺🇸 US Equities"
+    spot_str = f" (`{snap['spot']}`)" if snap["spot"] else ""
+    peer = "TCS" if sym == "INFY" else ("INFY" if sym == "TCS" else ("ICICIBANK" if sym == "HDFCBANK" else ("AMD" if sym == "NVDA" else "MSFT" if sym == "AAPL" else "NVDA")))
+
+    # 1A. Gratitude / Thanks
+    if query_kind == "conversational_meta" and subtopic == "thanks":
+        md = (
+            f"You're very welcome! Glad that helped.\n\n"
+            f"Whenever you're ready, we can keep chatting about any investing concept in plain English, take a closer look at **{sym}**{spot_str}, or pull up any other {desk_lbl} stock on your chart."
+        )
+        return md, [
+            f"What's your honest quick take on {sym} right now?",
+            "How do Swing trading (1–8W) and Long-Term DCF (1–3Y) differ?",
+            f"Compare {sym} vs {peer} head-to-head",
+        ]
+
+    # 1B. Casual Greeting / "Can I ask you stock-related questions?" / Capability Check
+    if query_kind == "conversational_meta":
+        live_tie = (
+            f"Right now I'm also synced with **{sym}**{spot_str} on your {desk_lbl} desk (Swing Score **{snap['score']} · {snap['verdict']}**"
+            + (f", 1–3Y Compounder **{snap['lt_score']}**" if snap["lt_score"] else "")
+            + "), whenever you want to weave real numbers into the conversation."
+            if snap["score"]
+            else f"I'm also connected to live {desk_lbl} prices, fundamentals, and charts whenever you want to look up a specific ticker."
+        )
+        md = (
+            "Yes, of course! You can talk to me just like a human market strategist — no special commands or jargon needed.\n\n"
+            "Here are a few ways we can chat:\n"
+            "- **Plain-English Investing & Quant Concepts:** Ask me *\"How does a 2-stage DCF work?\"*, *\"Should I DCA or invest lump sum?\"*, *\"What is the Hurst exponent or Volume Profile POC?\"*, or *\"Why can a stock be a Wait short-term but a Buy long-term?\"*\n"
+            f"- **Quick Honest Stock Takes:** Ask *\"What do you think of {sym}?\"*, *\"Is {peer} too expensive right now?\"*, or *\"Should I worry about after-hours moves?\"*\n"
+            f"- **Hands-Free Page Control:** Tell me *\"Switch to Long-Term mode\"*, *\"Compare {sym} vs {peer}\"*, or *\"Plot DCF and DCA zones on the chart\"* and I'll drive the screen for you.\n\n"
+            f"{live_tie} What's on your mind?"
+        )
+        return md, [
+            f"What do you honestly think about {sym} right now?",
+            "Why can a stock be AVOID short-term yet a Long-Term Buy?",
+            "How does 2-Stage DCF & Margin of Safety work?",
+        ]
+
+    # 2. Multi-Turn Conversational Follow-Ups ("give me an example", "simplify that", "tell me more")
+    if query_kind == "follow_up":
+        q_low = question.lower()
+        last_bot = ""
+        for m in reversed(history or []):
+            if m.get("role") != "user" and m.get("text"):
+                last_bot = str(m.get("text")).strip()
+                break
+        wants_example = bool(re.search(r"example", q_low))
+        wants_simple = bool(re.search(r"simpl|plain\s+english|eli5|like\s+i'?m\s+5|tldr|tl;dr|shorter|summar", q_low))
+
+        spot_ex = snap["spot"] or ("₹1,500" if market == "IN" else "$175")
+        dcf_ex = snap["base_dcf"].split(" ")[0] if snap["base_dcf"] else ("₹1,950" if market == "IN" else "$240")
+        poc_ex = snap["poc"] or ("₹1,560" if market == "IN" else "$182")
+
+        if wants_example:
+            md = (
+                f"Here's a concrete, real-world example using **{sym}** (trading around `{spot_ex}`):\n\n"
+                f"Imagine two disciplined investors looking at **{sym}** on the exact same morning:\n"
+                f"1. **The 3-Week Swing Trader** checks the *weather radar*. If price is sitting below its 20-day trend line and below heavy overhead Volume POC supply (`{poc_ex}`), buyers who bought higher are trapped and often sell into rallies. So the swing trader waits patiently for price to reclaim its 20-day trend before risking 1% of capital.\n"
+                f"2. **The 3-Year Compounder Investor** checks the *business appraisal* (our 2-Stage 10Y DCF around `{dcf_ex}`). Because great franchises rarely go on sale during sunny headlines, they split their budget into **3 DCA tranches (40% / 35% / 25%)** — buying 40% today and keeping 60% dry powder in case the market dips toward the 50-week or 200-week trend.\n\n"
+                "Same stock, same price — two completely valid playbooks because their holding clocks are different!"
+            )
+        elif wants_simple or mode == "eli5":
+            md = (
+                "In plain English, here is the core idea stripped of all Wall Street jargon:\n\n"
+                "**Price is what the crowd feels this week; intrinsic value is what the business's cash register actually earns over the next decade.**\n\n"
+                f"When short-term momentum is weak (like a storm passing through), we don't throw all our money in blindly at once — short-term traders wait for the sky to clear (price reclaiming its 20-day average), while long-term owners buy calmly in **2–3 smaller steps** as long as the business keeps growing profits and Free Cash Flow."
+                + (f" On **{sym}** (`{spot_ex}`), you can toggle between **⚡ Swing (1–8W)** and **🏛️ Long-Term (1–3Y)** at the top bar anytime to see both lenses side by side." if snap["spot"] else "")
+            )
+        else:
+            context_hint = f"Building on what we were just discussing" + (f" around **{sym}** (`{spot_ex}`)" if snap["spot"] else "") + ":\n\n"
+            if "dcf" in last_bot.lower() or "long-term" in last_bot.lower() or "tranche" in last_bot.lower():
+                md = (
+                    f"{context_hint}"
+                    "The biggest edge in multi-year investing comes from combining **valuation discipline** with **staged entries**. Even a 2-Stage DCF is an estimate — changing `WACC` by just `1%` or terminal growth by `0.5%` shifts fair value by 12–18%. That's why we pair a **Bear / Base / Bull DCF range** with a **3-Tranche DCA schedule** and use the **200-Week SMA** as our objective thesis-check floor.\n\n"
+                    f"Would you like me to open **{sym}**'s 2-Stage DCF & 3-Tranche DCA blueprint on your screen, or compare it against **{peer}**?"
+                )
+            else:
+                md = (
+                    f"{context_hint}"
+                    "What separates institutional decision-making from retail guesswork is checking **three independent pillars** before acting: (1) **Regime & Supply** (Hurst $H$ and Volume Profile `POC` so you know whether breakouts stick or fade), (2) **Downside Tail Risk** (Monte Carlo `P5` / `CVaR` and `1.8× ATR` stops so one bad trade never hurts your portfolio), and (3) **Fundamental Cash Generation** (`ROIC` vs. `WACC` and Free Cash Flow so time works in your favor).\n\n"
+                    f"Want to zoom into one of those pillars on **{sym}**, or test a specific scenario?"
+                )
+        return md, [
+            f"Give me your quick honest verdict on {sym}",
+            f"Open {sym}'s Long-Term DCF & 3-Tranche DCA tab",
+            f"Compare {sym} vs {peer} head-to-head",
+        ]
+
+    # 3. 16 Conceptual Investing, Valuation, Quant & Portfolio Topics
+    concepts = {
+        "swing_vs_longterm": (
+            "Think of **Swing Trading (`1–8W`)** as *weather radar* and **Long-Term Investing (`1–3Y+`)** as *buying a great business at a fair appraisal*.\n\n"
+            "That's why the exact same stock can be rated **AVOID / WAIT** on the Swing desk and **CORE ACCUMULATE** on the Long-Term desk without any contradiction:\n"
+            "- **Short-term swing traders** care about *path and momentum*. If a stock is trading below its `EMA 20`, `KAMA`, and Volume `POC`, institutional sellers are still pressing — buying a \"falling knife\" with a tight stop often gets whipsawed.\n"
+            "- **Long-term compounders** care about *ROIC, 3-year revenue/FCF compounding, and Margin of Safety vs. 2-Stage DCF*. High-quality companies almost *only* trade at DCF discounts when short-term charts look ugly, so long-term investors scale in across **3 DCA tranches (40% / 35% / 25%)** rather than waiting for all-clear highs."
+            + (f"\n\nOn your screen right now, **{sym}** (`{snap['spot']}`) sits at a Swing Score of **{snap['score']} ({snap['verdict']})**" + (f" vs. a 1–3Y Compounder Score of **{snap['lt_score']} ({snap['lt_verdict']})**." if snap["lt_score"] else ".") if snap["score"] else ""),
+            [
+                f"Switch {sym} to Long-Term (1–3Y) mode & show DCF",
+                "How does 3-Tranche DCA beat lump-sum timing?",
+                f"What price level flips {sym}'s short-term trend bullish?",
+            ],
+        ),
+        "dcf_intrinsic_value": (
+            "A **2-Stage 10-Year Discounted Cash Flow (DCF)** answers a simple question: *\"How much cash will this business hand its owners over time, and what is that stream worth in today's money?\"*\n\n"
+            "Instead of relying on whatever P/E multiple the crowd feels like paying this month, our engine models two phases:\n"
+            "- **Stage 1 (Years 1–5 — High-Growth Runway):** Projects Free Cash Flow (`Operating Cash Flow − CapEx`) compounding at the company's decayed revenue/earnings growth rate, discounted back each year by **WACC** (its CAPM Beta-adjusted cost of capital).\n"
+            "- **Stage 2 (Years 6–10 + Gordon Terminal Value):** Fades growth smoothly toward long-run GDP (`~3%` US / `~5%` India) so we never overpay assuming hyper-growth lasts forever, then adds Net Cash (or subtracts Net Debt) per share.\n\n"
+            "Because small shifts in `WACC` move fair value meaningfully, we always look for a **Margin of Safety** across Bear, Base, and Bull DCF cases."
+            + (f" For **{sym}** (`{snap['spot']}`), our live Base DCF is **{snap['base_dcf']}** with a 3Y target of `{snap['target_3y']}`." if snap["base_dcf"] else ""),
+            [
+                f"Open {sym}'s Long-Term DCF & DCA breakdown",
+                "What's the difference between DCF and P/E or PEG ratios?",
+                "Scan our universe for undervalued Long-Term Compounders",
+            ],
+        ),
+        "dca_vs_lumpsum": (
+            "Statistically, **Lump-Sum** wins ~65% of the time in calm uptrends because markets drift upward over decades — *but* **staged Dollar-Cost Averaging (DCA)** wins psychologically and protects you when buying pullbacks in volatile individual stocks.\n\n"
+            "Rather than blind monthly calendar buys, institutional desks use **level-based 3-Tranche DCA**:\n"
+            "- **Tranche 1 (`40%` — Starter Anchor):** Deployed near current spot / Value Area support so you don't miss the boat if the stock V-bottoms.\n"
+            "- **Tranche 2 (`35%` — Mean-Reversion Add):** Limit zone near the **50-Week SMA** or Volume Profile `VAL`.\n"
+            "- **Tranche 3 (`25%` — Deep-Value Reserve):** Kept for macro flushes toward the **200-Week SMA** or Bear-case DCF.\n\n"
+            "That way, if the stock rips higher tomorrow, 40% of your capital is already compounding; if it drops another 12%, you welcome the discount instead of panicking."
+            + (f" Want me to plot **{sym}**'s 3 DCA tranche zones directly onto your candlestick chart?" if sym else ""),
+            [
+                f"Plot {sym}'s 3-Tranche DCA & DCF levels on the chart",
+                "How does the 1% risk rule work for swing trades?",
+                f"What do you think of {sym} right now?",
+            ],
+        ),
+        "valuation_multiples": (
+            "Valuation multiples are shorthand speedometers for how much you're paying per dollar of profits — each one catches blind spots the others miss:\n\n"
+            "- **Trailing vs. Forward P/E:** Trailing P/E uses the last 12 months of GAAP EPS; **Forward P/E** uses next year's consensus estimates (crucial for fast-growing companies).\n"
+            "- **PEG Ratio (`P/E ÷ Growth %`):** Adjusts P/E for growth — a `30x` P/E growing earnings at `35%/yr` (`PEG ~0.85x`) is often much cheaper than a stagnant `14x` P/E growing at `3%/yr` (`PEG ~4.6x`, a classic *value trap*).\n"
+            "- **EV/EBITDA & FCF Yield:** Accounts for debt and real cash after CapEx, while **ROIC vs. WACC** tells you whether management turns every reinvested dollar into genuine compounding value."
+            + (f"\n\nIf you'd like, we can pull up **{sym}**'s live P/E, PEG, EV/EBITDA, and ROIC vs. its sector in one click." if sym else ""),
+            [
+                f"Is {sym} overvalued or reasonably priced right now?",
+                "How does a 2-Stage DCF compare to P/E ratios?",
+                f"Compare {sym} vs {peer} across valuation & growth",
+            ],
+        ),
+        "hurst_regime": (
+            "The **Hurst Exponent ($H$)** measures a stock's *memory* — whether recent price moves tend to keep snowballing in the same direction or snap back like a rubber band:\n\n"
+            "- **`H > 0.55` (Persistent / Trending Regime):** Momentum begets momentum. Trend-following tools (`EMA 20/50`, `KAMA`, `SuperTrend`, breakout pullbacks) thrive here, while shorting \"overbought\" RSI readings gets run over.\n"
+            "- **`H < 0.45` (Anti-Persistent / Mean-Reverting Regime):** Breakouts tend to fizzle and snap back toward fair value (`Volume POC` / `VWAP`). Buying oversold dips (`Connors RSI-2 < 15`) and taking quicker profits works best.\n"
+            "- **`H ≈ 0.45–0.55` (Geometric Random Walk):** Noise dominates, so you demand wider Margins of Safety or smaller position sizes."
+            + (f"\n\nRight now on your chart, **{sym}** reads **`H = {snap['hurst']}` ({snap['regime']})** — which is why our Walk-Forward Meta-Boss automatically weights the matching strategy family." if snap["hurst"] else ""),
+            [
+                f"Which backtested strategy has the highest Sharpe on {sym}?",
+                "What is Volume Profile POC, VAH, and VAL?",
+                f"What's your honest quick take on {sym}?",
+            ],
+        ),
+        "monte_carlo_merton": (
+            "A **Monte Carlo simulation** stress-tests thousands of realistic future price paths instead of betting everything on one single price target.\n\n"
+            "Standard **Geometric Brownian Motion (GBM)** assumes smooth, bell-curve daily returns — which dangerously underestimates real-world earnings gaps and macro shocks. That's why StockSage defaults to **Merton Jump-Diffusion** paired with **RiskMetrics EWMA volatility**: it explicitly models sudden Poisson jump shocks alongside drift and fat tails.\n\n"
+            "The two numbers institutions watch closest are **Win Odds** (% of paths finishing above spot) and **5% CVaR (Expected Shortfall)** — your *average* loss across the worst 5% of scenarios, which is much more honest about tail risk than standard VaR."
+            + (f" On **{sym}** right now, win odds are **{snap['mc_win']}** with 5% CVaR at `{snap['mc_cvar']}`." if snap["mc_win"] else ""),
+            [
+                f"Run 1500 Monte Carlo paths over 90 days for {sym}",
+                f"Stress test {sym} if the market drops -8%",
+                "How does Kelly criterion position sizing work?",
+            ],
+        ),
+        "volume_profile_poc": (
+            "While normal volume bars at the bottom of a chart show *when* shares traded, **Volume Profile** plots a horizontal histogram showing **at what exact prices** the most money changed hands:\n\n"
+            "- **POC (Point of Control):** The single price bin with the heaviest institutional volume — think of it as the market's \"center of gravity\" or consensus fair value.\n"
+            "- **Value Area (`VAL` to `VAH`):** The range where ~70% of all volume occurred.\n\n"
+            "When price sits *above* the `POC`, that dense node acts as a strong institutional floor on pullbacks. When price drops *below* the `POC`, all those buyers above are underwater — turning the `POC` into \"overhead supply\" until reclaimed."
+            + (f" On **{sym}** (`{snap['spot']}`), `POC` sits at `{snap['poc']}` with Value Area `{snap['val']} – {snap['vah']}`." if snap["poc"] else ""),
+            [
+                f"Plot {sym}'s key support, POC & target lines on the chart",
+                "What does Hurst exponent mean for trend vs mean-reversion?",
+                f"Should I buy {sym} now or wait for a better level?",
+            ],
+        ),
+        "momentum_oscillators": (
+            "Momentum and trend indicators work best when you know *which job* each one was built for — otherwise you end up looking at five indicators saying the same thing:\n\n"
+            "- **Trend Structure (`EMA 20/50`, `Kaufman KAMA`, `ATR SuperTrend`):** Tell you the direction of the river. `KAMA` is smart because it hugs price tightly in clean trends (high Efficiency Ratio) and flattens out during choppy noise.\n"
+            "- **Mean-Reversion Timing (`RSI-14` vs. `Connors RSI-2`):** `RSI-14` measures multi-week momentum, whereas Larry Connors' `RSI-2` (`< 10–15`) pinpoints sharp 2–3 day institutional washouts *inside* healthy uptrends.\n"
+            "- **Volatility Coiling (`TTM Squeeze`):** Fires when Bollinger Bands compress *inside* Keltner Channels — signaling that a coiled spring is about to release a big directional move."
+            + (f"\n\nWant me to check how those signals line up across 1H, Daily, and Weekly timeframes on **{sym}**?" if sym else ""),
+            [
+                f"Check multi-timeframe confluence for {sym}",
+                "Explain Hurst exponent in simple terms",
+                "Scan for stocks in a TTM Volatility Squeeze",
+            ],
+        ),
+        "position_sizing_kelly": (
+            "Great traders survive losing streaks because **position sizing matters more than entry perfection**.\n\n"
+            "StockSage combines three institutional guardrails whenever it calculates your share count:\n"
+            "1. **Chandelier `1.8× Wilder ATR` Stop-Loss:** Places your stop outside normal daily noise (`1.8×` average daily range) so random wicks don't shake you out prematurely.\n"
+            "2. **The `1%` Account Risk Cap:** Even if your stop is hit, you lose at most **1% of total portfolio equity** (`Shares = 1% Account Risk ÷ Stop Distance`).\n"
+            "3. **Half-Kelly Cap & `R`-Multiples:** Full Kelly maximizes mathematical compounding but causes stomach-churning drawdowns, so institutions cap size at **Half-Kelly** and scale profits at `1.5R`, `2.5R`, and `4.0R` (risking 1 unit to make 2.5–4 units)."
+            + (f"\n\nYou can also tell me *\"Size {sym} for a $50,000 portfolio\"* anytime and I'll recalculate your exact shares live." if sym else ""),
+            [
+                f"What if I allocate {snap['ccy']}50,000 to {sym}?",
+                "How does 3-Tranche DCA differ from a stop-loss swing trade?",
+                "What are Sharpe, Sortino, and Calmar ratios?",
+            ],
+        ),
+        "risk_adjusted_ratios": (
+            "Raw return alone hides how bumpy or lucky the ride was — risk-adjusted ratios tell you **how much return you earned per unit of pain**:\n\n"
+            "- **Sharpe Ratio:** Excess return divided by *total* volatility (both upside rips and downside drops). Above `1.0` is solid; above `1.5` is strong.\n"
+            "- **Sortino Ratio:** Smarter for growth stocks because it only penalizes *downside* volatility — a stock shouldn't be penalized for surging +8% on a great earnings beat!\n"
+            "- **Calmar Ratio:** Annual return divided by **Max Drawdown** (worst peak-to-trough drop).\n"
+            "- **CAPM Beta ($\\beta$) & Jensen's Alpha ($\\alpha$):** Beta shows sensitivity to `SPY`/`NIFTY 50` (`β = 1.6` moves ~1.6× the index), while **Alpha** measures true outperformance *after* stripping out that market ride."
+            + (f"\n\nWant to compare **{sym}** vs. **{peer}** across Sharpe, Sortino, Beta, and Max Drawdown?" if sym else ""),
+            [
+                f"Compare {sym} vs {peer} on Sharpe, Sortino & valuation",
+                f"Stress test {sym} against a -10% market pullback",
+                "How does Hierarchical Risk Parity (HRP) weight a portfolio?",
+            ],
+        ),
+        "hrp_portfolio": (
+            "Most investors make the mistake of **equal-weighting dollars** instead of **equal-weighting risk**.\n\n"
+            "If you put `$5,000` into a calm utility/consumer compounder (`18%` annualized volatility) and `$5,000` into a high-beta AI semiconductor stock (`48%` volatility), nearly **80% of your daily P&L swings** actually come from that one volatile tech stock!\n\n"
+            "**Hierarchical Risk Parity (HRP)** and **Inverse-Volatility Weighting** fix this by scaling allocations *up* on steady, uncorrelated compounders and trimming size slightly on wild movers — delivering smoother equity curves and shallower drawdowns without sacrificing alpha. For individual stock portfolios, **8–15 uncorrelated high-conviction names** (or a Core index ETF + 5–8 Satellite compounders) usually hits the sweet spot.",
+            [
+                f"Build a risk-parity basket with {sym}, {peer}, MSFT, and JPM",
+                "ETFs vs individual stocks — how should I blend them?",
+                "Scan the top Weekly Alpha & Risk-Parity basket",
+            ],
+        ),
+        "earnings_pead_ext": (
+            "Quarterly earnings and extended-hours sessions are where retail traders get tripped up most often:\n\n"
+            "- **Binary Gap Risk:** Holding a short-term swing trade with a tight stop *through* an earnings print is a coin flip — overnight gaps jump right past stop orders. Institutions either trim swing risk inside 7–10 days pre-earnings or hold with smaller multi-year sizing.\n"
+            "- **PEAD (Post-Earnings Announcement Drift):** When a company beats estimates *and* analysts raise next quarter's EPS revisions (`30D Up Revisions`), institutional funds often take weeks to accumulate their full position, creating a multi-week upward drift.\n"
+            "- **Pre-Market & After-Hours Tape:** Order books outside regular hours are much thinner, so initial knee-jerk moves at 4:05 PM ET often exaggerate or reverse once full institutional volume arrives."
+            + (f" ({sym} live extended tape: `{snap['ext_line']}`.)" if snap["ext_line"] else ""),
+            [
+                f"Check {sym}'s earnings beat streak & next report date",
+                f"What do you think of {sym} right now?",
+                "How do 13F institutional filings and Form 4 insider buys work?",
+            ],
+        ),
+        "smart_money_filings": (
+            "Following \"smart money\" filings helps you separate real conviction from noisy headlines — as long as you know each filing's quirk:\n\n"
+            "- **Form 4 (Insider Transactions — 2 Business Days):** Executives sell shares for dozens of routine reasons (taxes, diversify options via scheduled `10b5-1` plans), so routine sales are weak signals. **Open-market insider cluster buying**, however, happens for only one reason: insiders think their stock is undervalued.\n"
+            "- **13F Filings (Institutional Holdings — 45-Day Lag):** Shows quarterly accumulation/distribution by giants like Vanguard, BlackRock, and top hedge funds.\n"
+            "- **Short % of Float & Days-to-Cover:** High short float (`>10–15%`) flags bearish skepticism — *or* rocket fuel for a short squeeze if fundamentals surprise to the upside.\n"
+            "- **10-K / 10-Q / 8-K:** Annual, quarterly, and material-event SEC filings where true Free Cash Flow and CapEx live.",
+            [
+                f"Audit {sym}'s 13F institutional holders, insiders & short float",
+                f"Open {sym}'s Financials tab and check FCF vs CapEx",
+                "What makes a high-ROIC Long-Term Compounder?",
+            ],
+        ),
+        "trading_psychology_taxes": (
+            "Two silent forces erode more wealth than bad stock picks: **behavioral biases** and **short-term tax drag**.\n\n"
+            "- **The Disposition Effect & FOMO:** Humans naturally cut winners way too early (*\"lock in a quick 5%\"*) while holding losers indefinitely hoping to \"get back to breakeven\" — the exact opposite of asymmetric compounding. Defining your **horizon (`1–8W` Swing vs. `1–3Y` Compounder)** *before* you click buy solves 80% of emotional mistakes.\n"
+            "- **STCG vs. LTCG Tax Drag:** Holding over **12 months** drops US federal long-term capital gains rates (`0% / 15% / 20%` vs. up to `37%` ordinary income) and cuts India equity tax from **20% STCG** to **12.5% LTCG** (above the `₹1.25L` annual exemption). A short-term trade has to earn ~15–25% *more* pre-tax just to match an untaxed multi-year compounder!",
+            [
+                "How do Swing trading and Long-Term Compounding work together?",
+                "ETFs vs individual stocks — what's the smartest mix?",
+                f"Show me {sym}'s 1–3Y Long-Term Compounder score",
+            ],
+        ),
+        "etfs_vs_stocks": (
+            "It doesn't have to be an either/or choice — most disciplined wealth builders use a **Core-Satellite framework**:\n\n"
+            "- **The Core (`65%–80%` in Broad Index ETFs):** Low-cost engines like `SPY` / `VOO` / `QQQ` in the US or `NIFTYBEES` / `NIFTY 50` in India automatically rebalance into winners, eliminate single-company blowup risk, and compound tax-efficiently.\n"
+            "- **The Satellite (`20%–35%` in High-Conviction Stocks):** Focused on 5–10 businesses with superior **ROIC > WACC**, durable moats, and **Margin of Safety vs. 2-Stage DCF** (or tactical swing setups with strict 1% risk caps).\n\n"
+            "That way your financial future never depends on guessing every earnings report right, while high-conviction compounders give you real upside alpha over the index.",
+            [
+                "Scan our universe for the top Long-Term Compounders",
+                "How does 3-Tranche DCA work when buying individual stocks?",
+                f"Compare {sym} vs SPY",
+            ],
+        ),
+        "macro_rates_beginner": (
+            "Think of **interest rates (10-Year Treasury / RBI yields)** as *financial gravity* on stock valuations:\n\n"
+            "When rates fall, future cash flows 5–10 years out are discounted by a smaller **WACC**, lifting fair DCF multiples — especially for high-growth tech compounders. When rates jump higher, investors can earn solid yields in risk-free bonds, compressing stretched P/E multiples and rewarding **cash-rich, high-FCF businesses** over unprofitable story stocks.\n\n"
+            "If you're building or refining a stock playbook, keep three rules front and center: (1) pick your **clock** first (`1–8W` Swing vs. `1–3Y+` Compounder), (2) never risk more than **1% of equity** on a tactical stop or **10–15%** in a single long-term stock, and (3) scale into quality across **2–3 tranches** rather than chasing euphoric spikes.",
+            [
+                "How does a 2-Stage 10Y DCF valuation work?",
+                "Why can a stock be AVOID short-term yet a Long-Term Buy?",
+                f"Give me your honest take on {sym} right now",
+            ],
+        ),
+    }
+
+    body_md, fups = concepts.get(subtopic, concepts["macro_rates_beginner"])
+    if mode == "eli5":
+        body_md = "👶 **In Plain Everyday English:**\n\n" + body_md
+    return body_md, fups
+
+
+def _build_adaptive_stage3_prompt(mode: str, query_kind: str, subtopic: str) -> str:
+    """
+    Builds an adaptive system instruction for Stage 3 Gemini / Vertex AI synthesis:
+    - Warm, concise first-person conversational prose (80–220 words, zero unsolicited KPI tables) for casual/follow-up/conceptual turns.
+    - Conversational human advisor lead-in + crisp data-backed numbers for stock checks and deep dives.
+    """
+    persona_tone = {
+        "analyst": "Warm, articulate Senior Portfolio Strategist — sharp institutional intuition explained naturally like a trusted colleague.",
+        "eli5": "Friendly Plain-English Mentor (ELI5) — use vivid everyday analogies (weather radar vs. house appraisal, stretched rubber band) and zero intimidating jargon.",
+        "debate": "Balanced Bull vs. Bear Committee Moderator — weigh the strongest upside arguments against the sharpest downside risks.",
+        "devil": "Candid Chief Risk Officer (Devil's Advocate) — friendly but unflinchingly honest about blind spots, valuation stretch, and downside traps.",
+    }.get(mode, "Warm, articulate Senior Portfolio Strategist.")
+
+    if query_kind in ("conversational_meta", "follow_up", "conceptual_investing"):
+        return (
+            "You are **Quant Copilot**, the conversational equity & quantitative strategist inside **StockSage Quant Pro**.\n"
+            f"Persona Tone: {persona_tone}\n\n"
+            "### CONVERSATIONAL STYLE RULES (CRITICAL):\n"
+            "1. Reply in **warm, natural first-person prose (`80–220 words`)** — like a thoughtful human portfolio manager chatting directly with the user.\n"
+            "2. **NEVER** output rigid institutional report headers (`H1/H2/H3`, `Executive Audit`), **NEVER** dump unsolicited Markdown KPI tables, and **NEVER** list raw telemetry blocks when the user is just greeting you, asking what they can ask, following up (*'give me an example'*, *'simplify'*), or asking a general investing/quant concept.\n"
+            "3. For conceptual questions, explain the intuition clearly first, and optionally weave in **at most 1 brief, helpful sentence** connecting the concept to the user's currently loaded stock on screen if relevant.\n"
+            "4. Escape literal dollar signs outside backticks or wrap prices in backticks (e.g., `` `$173.73` ``) so Markdown renders cleanly.\n"
+            "5. On the very final line, output 3 natural conversational follow-up suggestions formatted strictly as:\n"
+            "   `FOLLOW_UPS: Question 1? | Question 2? | Question 3?`"
+        )
+
+    if query_kind == "conversational_stock_check":
+        return (
+            "You are **Quant Copilot**, the conversational quantamental strategist inside **StockSage Quant Pro**.\n"
+            f"Persona Tone: {persona_tone}\n\n"
+            "### CONVERSATIONAL STOCK CHECKUP RULES:\n"
+            "1. **Open like a human strategist (1–2 natural sentences)** directly answering the user's question in plain English before citing details.\n"
+            "2. Keep it conversational and focused (`130–280 words`): reconcile the **1–8W Tactical Swing setup** (`EMA20/KAMA`, `Volume POC`, `Hurst`, `Monte Carlo`) with the **1–3Y Long-Term Compounder & 2-Stage DCF view** (`Base DCF`, `ROIC`, `Street Target`, `3-Tranche DCA`) whenever they diverge — explaining *why* short-term traders wait for trend confirmation while multi-year investors scale in via tranches.\n"
+            "3. Cite exact live numbers from the RAG & telemetry blocks in `backticks` or **bold** (zero hallucination), highlight the single biggest risk to watch, and avoid robotic `H1/H2/H3` scaffolding unless the user asked for a formal audit.\n"
+            "4. If UI Page-Driver commands were executed, mention them briefly and naturally in 1 line.\n"
+            "5. On the very final line, output 3 natural follow-up questions formatted strictly as:\n"
+            "   `FOLLOW_UPS: Question 1? | Question 2? | Question 3?`"
+        )
+
+    # Full quant_deep_dive mode: keep rigorous REASONER_SI + open with a natural conversational lead-in
+    mode_instructions = {
+        "analyst": (
+            "PERSONA MODE: ⚡ INSTITUTIONAL QUANTAMENTAL ANALYST (Deep Multi-Horizon Synthesis).\n"
+            "Open with a natural 1–2 sentence conversational takeaway directly answering the user, then test all 3 Planner Hypotheses (`H1`, `H2`, `H3`) against the Citation-Indexed RAG & Quantitative Tool Evidence. "
+            "Synthesize 1–8W Technicals/Quant (Trend, Volume POC, Monte Carlo, 7-Strategy Backtest + Meta-Boss) with 1–3Y Fundamentals & 2-Stage 10Y DCF."
+        ),
+        "eli5": (
+            "PERSONA MODE: 👶 EXPLAIN LIKE I'M 5 (Plain English & Vivid Everyday Analogies).\n"
+            "Explain the findings using simple, memorable analogies while keeping real numbers in `backticks`, and finish with a bold 'Bottom Line in 1 Sentence'."
+        ),
+        "debate": (
+            "PERSONA MODE: ⚔️ BULL VS. BEAR INSTITUTIONAL COMMITTEE DEBATE.\n"
+            "Open with a 1-sentence framing, then structure into: 1. ### 🟢 The Bull Case, 2. ### 🔴 The Bear Case, 3. ### ⚖️ Verdict & Exact Trigger Levels."
+        ),
+        "devil": (
+            "PERSONA MODE: 🦈 DEVIL'S ADVOCATE & CHIEF RISK OFFICER PRE-MORTEM AUDIT.\n"
+            "Open conversationally, then ruthlessly expose hidden traps (overhead Volume POC supply, FCF vs CapEx, binary earnings gap risk, valuation stretch) with exact downside guardrails."
+        ),
+    }
+    return f"{REASONER_SI}\n\n{mode_instructions.get(mode, mode_instructions['analyst'])}"
+
+
+def _build_conversational_stock_check_fallback(
+    question: str,
+    sym: str,
+    market: str,
+    mode: str,
+    intel: dict,
+    primary_quant: dict,
+    client_telemetry: str,
+) -> tuple:
+    """
+    Synthesizes a warm, human-sounding Quantamental Stock Checkup from live server RAG + telemetry
+    when external LLM APIs are unconfigured — avoiding robotic KPI table dumps or error banners.
+    """
+    snap = _extract_live_telemetry_highlights(client_telemetry, sym, market)
+    ccy = "₹" if market == "IN" else "$"
+    ov = (intel or {}).get("overview") or {}
+    an = (intel or {}).get("analysis") or {}
+    er = (intel or {}).get("earnings") or {}
+    lt = (intel or {}).get("long_term") or {}
+    pt = an.get("price_targets") or {}
+    rt = an.get("ratings") or {}
+    lt_dcf = lt.get("dcf") or {}
+    lt_dca = lt.get("dca_plan") or {}
+    tranches = lt_dca.get("tranches") or []
+
+    name = ov.get("name") or sym
+    spot_val = ov.get("regular_price")
+    spot_fmt = f"{ccy}{spot_val:,.2f}" if isinstance(spot_val, (int, float)) else (snap["spot"] or sym)
+    post_p = ov.get("post_market_price")
+    pre_p = ov.get("pre_market_price")
+    ext_note = ""
+    if post_p:
+        ext_note = f" (with after-hours trading around `{ccy}{post_p:,.2f}`)"
+    elif pre_p:
+        ext_note = f" (with pre-market trading around `{ccy}{pre_p:,.2f}`)"
+
+    sw_score = snap["score"] or (f"{primary_quant.get('weekly_alpha_score')}/100" if primary_quant else "Neutral")
+    sw_verdict = snap["verdict"] or (primary_quant.get("weekly_action") if primary_quant else "HOLD / WAIT")
+    lt_score = lt.get("score")
+    lt_verdict = lt.get("verdict") or "HOLD"
+    dcf_fair = lt_dcf.get("intrinsic_fair_value")
+    dcf_up = lt_dcf.get("dcf_upside_pct")
+    street_mean = pt.get("mean")
+    bull_pct = rt.get("bullish_pct")
+    poc_str = snap["poc"] or (f"{ccy}{primary_quant.get('poc')}" if primary_quant and primary_quant.get("poc") else "fair-value POC")
+
+    horizon_conflict = ("AVOID" in str(sw_verdict).upper() or "WAIT" in str(sw_verdict).upper()) and (
+        (isinstance(lt_score, (int, float)) and lt_score >= 62) or (isinstance(bull_pct, (int, float)) and bull_pct >= 68)
+    )
+
+    if mode == "eli5":
+        lead = (
+            f"Here's the plain-English story on **{name} (`{sym}`)** at `{spot_fmt}`{ext_note}:\n\n"
+            f"Think of `{sym}` right now like a great house on a temporarily stormy street. "
+        )
+    else:
+        lead = f"Here's my honest read on **{name} (`{sym}`)** right now at `{spot_fmt}`{ext_note}:\n\n"
+
+    if horizon_conflict:
+        t1_zone = f"`{ccy}{tranches[0]['zone'][0]}–{ccy}{tranches[0]['zone'][1]}`" if tranches else "spot support"
+        t2_zone = f"`{ccy}{tranches[1]['zone'][0]}–{ccy}{tranches[1]['zone'][1]}`" if len(tranches) > 1 else "its 50-week average"
+        mid = (
+            f"**Your answer depends entirely on your holding clock** — because short-term technicals and multi-year fundamentals are pulling in opposite directions:\n"
+            f"- **1–8 Week Swing Lens (`{sw_score}` · {sw_verdict}):** Short-term momentum is still repairing below overhead supply around `{poc_str}`. Even when price dips into a value zone, our swing engine waits for buyers to prove they've stepped back in (reclaiming the 20-day `EMA` / `KAMA`) rather than catching a falling knife with a tight stop.\n"
+            f"- **1–3 Year Compounder Lens (`{lt_score}/100` · {lt_verdict}):** Zooming out, the business quality is much stronger"
+            + (f" — our 2-Stage 10Y DCF puts intrinsic value near **`{ccy}{dcf_fair}`** (`{dcf_up:+.1f}%` vs. spot)" if dcf_fair is not None and dcf_up is not None else "")
+            + (f" and `{bull_pct}%` of Wall Street analysts rate it a Buy (mean target `{ccy}{street_mean}`)." if street_mean and bull_pct else ".")
+            + f" Instead of going all-in at once, the institutional playbook is **3-Tranche DCA**: deploy **40%** in Tranche 1 ({t1_zone}), keep **35%** for {t2_zone}, and hold **25%** reserve above the 200-week secular floor."
+        )
+    else:
+        mid = (
+            f"- **Tactical Swing Setup (`1–8W`):** Scoring **`{sw_score}` ({sw_verdict})**"
+            + (f" in a `{snap['regime']}` regime (`H = {snap['hurst']}`), with key Volume Profile center-of-gravity at `{poc_str}`." if snap["hurst"] else f" around `{poc_str}`.")
+            + "\n"
+            + (
+                f"- **Multi-Year Fundamental & DCF View (`1–3Y`):** Scores **`{lt_score}/100` ({lt_verdict})**, with Base 2-Stage DCF at **`{ccy}{dcf_fair}`** (`{dcf_up:+.1f}%`)"
+                + (f" and Street consensus mean target at `{ccy}{street_mean}`." if street_mean else ".")
+                if lt_score is not None and dcf_fair is not None
+                else f"- **Street Consensus:** Mean 12M target sits near `{ccy}{street_mean}` ({bull_pct or '—'}% bullish ratings)." if street_mean else ""
+            )
+        )
+
+    days_er = er.get("days_until_earnings")
+    risk_line = (
+        f"\n\n**One key watch-out:** Next earnings land in **`{days_er}` days** (`{er.get('next_earnings_date')}`), so avoid oversized short-term bets right into a binary print."
+        if isinstance(days_er, int) and 0 <= days_er <= 18
+        else (f"\n\n**Key risk guardrail:** Keep an eye on tail downside (`5% CVaR` near `{snap['mc_cvar']}`) and let position sizing do the heavy lifting." if snap["mc_cvar"] else "")
+    )
+
+    peer = "TCS" if sym == "INFY" else ("AMD" if sym == "NVDA" else ("MSFT" if sym == "AAPL" else "NVDA"))
+    return (lead + mid + risk_line).strip(), [
+        f"Switch to Long-Term (1–3Y) mode & plot {sym}'s DCF/DCA zones",
+        f"What are the biggest hidden risks for {sym}?",
+        f"Compare {sym} vs {peer} head-to-head",
+    ]
+
+
 def handle_ai_chat(payload: dict) -> dict:
     question = (payload.get("question") or "").strip()
     if not question:
@@ -4021,44 +4687,13 @@ def handle_ai_chat(payload: dict) -> dict:
     mode = (payload.get("mode") or "analyst").lower().strip()
     client_telemetry = payload.get("telemetry") or ""
     history = payload.get("history") or []
-    user_api_key = (payload.get("api_key") or os.environ.get("GEMINI_API_KEY") or "").strip()
-    preferred_model = (payload.get("model") or "gemini-2.5-pro").strip()
+    explicit_user_key = (payload.get("api_key") or "").strip()
+    user_api_key = (explicit_user_key or os.environ.get("GEMINI_API_KEY") or "").strip()
+    raw_model = (payload.get("model") or "").strip()
+    preferred_model = raw_model or "gemini-2.5-pro"
 
-    # ── STAGE 1: STRATEGIC PLANNER & UI PAGE-DRIVER ORCHESTRATOR ──
-    plan = _build_planner_execution_plan(question, sym, market)
-
-    # ── STAGE 2: PARALLEL RAG & QUANTITATIVE TOOL EXECUTOR ──
-    rag_blocks, quant_blocks, rag_trace = _execute_rag_and_quant_tools(plan, question)
-
-    # ── STAGE 3: DEEP REASONER, CRITIC & SYNTHESIZER ──
-    mode_instructions = {
-        "analyst": (
-            "PERSONA MODE: ⚡ INSTITUTIONAL QUANTAMENTAL ANALYST (Deep Multi-Horizon Synthesis).\n"
-            "Test all 3 Planner Hypotheses (`H1`, `H2`, `H3`) against the Citation-Indexed RAG & Quantitative Tool Evidence below. "
-            "Synthesize the 1–8 week Quantitative/Technical signals (Trend, Momentum, Volume POC, Monte Carlo, 7-Strategy Backtest + Walk-Forward Meta-Boss) "
-            "and the 12–24 month Fundamental/Wall Street signals (Analyst Price Targets, 4Q Earnings Beat/Miss streak, 30D Revisions, 5Q Revenue/Margin/FCF vs. CapEx, 13F Holdings, News). "
-            "Whenever Technicals and Wall Street Analysts disagree, explicitly explain the time-horizon conflict and give the exact price trigger to resolve it."
-        ),
-        "eli5": (
-            "PERSONA MODE: 👶 EXPLAIN LIKE I'M 5 (Plain English & Vivid Everyday Analogies).\n"
-            "Explain the Planner's findings, technical setup, Monte Carlo odds, and fundamental valuation using simple, memorable analogies (like weather radar vs. house appraisal, stretched rubber bands, bowling bumpers, or a lemonade stand's cash register). "
-            "Still include the real numbers in parentheses so the user learns what they mean, and finish with a bold 'Bottom Line in 1 Sentence'."
-        ),
-        "debate": (
-            "PERSONA MODE: ⚔️ BULL VS. BEAR INSTITUTIONAL COMMITTEE DEBATE.\n"
-            "Structure your response into three rigorous sections:\n"
-            "1. ### 🟢 The Bull Case (3 Strongest RAG & Quant Data-Backed Arguments)\n"
-            "2. ### 🔴 The Bear Case (3 Strongest RAG & Quant Data-Backed Risks)\n"
-            "3. ### ⚖️ Portfolio Manager's Verdict & Exact Trigger Levels (Who wins right now across 1–8W vs. 12M horizons and what exact price level flips the script)."
-        ),
-        "devil": (
-            "PERSONA MODE: 🦈 DEVIL'S ADVOCATE & CHIEF RISK OFFICER PRE-MORTEM AUDIT.\n"
-            "Your job is to protect the user's capital by ruthlessly stress-testing their thesis on this stock. "
-            "Expose hidden traps across the RAG & Quant telemetry (overhead Volume POC supply, negative Free Cash Flow from surging CapEx, upcoming binary earnings gap risk, Form 4 insider selling, negative Sharpe/Sortino, or shorting in the hole below Wall Street's bear target). "
-            "Give specific downside levels (Stop-Loss, Bear Tail P5, CVaR) and position-sizing guardrails."
-        ),
-    }
-    selected_mode_prompt = mode_instructions.get(mode, mode_instructions["analyst"])
+    # ── STAGE 0: CONVERSATIONAL & CONCEPTUAL NLP ROUTER ──
+    query_kind, subtopic = classify_chat_query_kind(question, sym, market, history)
 
     hist_lines = []
     for m in history[-8:]:
@@ -4067,6 +4702,85 @@ def handle_ai_chat(payload: dict) -> dict:
         if txt:
             hist_lines.append(f"{r_lbl}: {txt}")
     hist_block = "\n".join(hist_lines) if hist_lines else "(Start of conversation)"
+
+    # Fast, zero-clutter conversational lane for casual greetings, capability checks, follow-ups & 16 investing concepts
+    if query_kind in ("conversational_meta", "follow_up", "conceptual_investing"):
+        conv_si = _build_adaptive_stage3_prompt(mode, query_kind, subtopic)
+        snap = _extract_live_telemetry_highlights(client_telemetry, sym, market)
+        light_ctx = (
+            f"Active Screen Context (reference lightly in at most 1 sentence ONLY if helpful — never dump as a table): "
+            f"Symbol={sym} ({market}), Spot={snap['spot'] or 'N/A'}, Swing={snap['score']} ({snap['verdict']}), "
+            f"1-3Y Compounder={snap['lt_score'] or 'N/A'} ({snap['lt_verdict'] or 'N/A'}), BaseDCF={snap['base_dcf'] or 'N/A'}, "
+            f"Hurst={snap['hurst'] or 'N/A'} ({snap['regime'] or 'N/A'}), POC={snap['poc'] or 'N/A'}"
+        )
+        conv_prompt = (
+            f"{conv_si}\n\n"
+            f"=== LIGHTWEIGHT SCREEN CONTEXT ===\n{light_ctx}\n\n"
+            f"=== RECENT CONVERSATION HISTORY ===\n{hist_block}\n\n"
+            f"=== USER MESSAGE ===\n{question}"
+        )
+        # Prefer snappy gemini-2.5-flash on conversational turns unless user explicitly chose another model
+        conv_model = "gemini-2.5-flash" if preferred_model == "gemini-2.5-pro" and not explicit_user_key else preferred_model
+        raw_reply, used_model, used_provider, err_diag = _call_gemini_llm(
+            conv_prompt,
+            user_api_key=user_api_key,
+            preferred_model=conv_model,
+            max_tokens=1400,
+            temperature=0.35,
+            timeout_sec=22,
+        )
+        if raw_reply:
+            follow_ups = []
+            clean_lines = []
+            for line in raw_reply.splitlines():
+                s_line = line.strip()
+                if s_line.upper().startswith("FOLLOW_UPS:"):
+                    raw_f = s_line.split(":", 1)[1]
+                    follow_ups = [q.strip().strip("*`-• ") for q in raw_f.split("|") if q.strip()][:3]
+                elif not s_line.upper().startswith("UI_COMMANDS_JSON:"):
+                    clean_lines.append(line)
+            if not follow_ups:
+                _, follow_ups = build_conversational_advisor_turn(
+                    question, query_kind, subtopic, sym, market, mode, client_telemetry, history
+                )
+            return {
+                "ok": True,
+                "query_kind": query_kind,
+                "model": used_model,
+                "provider": used_provider,
+                "plan": None,
+                "rag_trace": [],
+                "ui_commands": [],
+                "markdown": "\n".join(clean_lines).strip(),
+                "follow_ups": follow_ups,
+            }
+
+        # Built-in warm conversational advisor (instant, zero KPI dump, zero noisy error banner)
+        built_md, built_fups = build_conversational_advisor_turn(
+            question, query_kind, subtopic, sym, market, mode, client_telemetry, history
+        )
+        llm_note = f"API Key Note: {err_diag}" if (explicit_user_key and err_diag) else ""
+        return {
+            "ok": True,
+            "query_kind": query_kind,
+            "model": "Conversational Advisor",
+            "provider": "StockSage Engine",
+            "plan": None,
+            "rag_trace": [],
+            "ui_commands": [],
+            "markdown": built_md,
+            "follow_ups": built_fups,
+            "llm_note": llm_note,
+        }
+
+    # ── STAGE 1: STRATEGIC PLANNER & UI PAGE-DRIVER ORCHESTRATOR ──
+    plan = _build_planner_execution_plan(question, sym, market)
+
+    # ── STAGE 2: PARALLEL RAG & QUANTITATIVE TOOL EXECUTOR ──
+    rag_blocks, quant_blocks, rag_trace = _execute_rag_and_quant_tools(plan, question)
+
+    # ── STAGE 3: ADAPTIVE DEEP REASONER, CRITIC & CONVERSATIONAL SYNTHESIZER ──
+    adaptive_si = _build_adaptive_stage3_prompt(mode, query_kind, subtopic)
 
     skills_summary = "\n".join(
         f"• [{sk_id}] {PLANNER_SKILLS_REGISTRY.get(sk_id, {}).get('name', sk_id)}: {PLANNER_SKILLS_REGISTRY.get(sk_id, {}).get('description', '')}"
@@ -4077,9 +4791,7 @@ def handle_ai_chat(payload: dict) -> dict:
         for c in plan.get("ui_commands", [])
     ) or "• None (Maintaining current view)"
 
-    reasoner_prompt = f"""{REASONER_SI}
-
-{selected_mode_prompt}
+    reasoner_prompt = f"""{adaptive_si}
 
 === STAGE 1 STRATEGIC PLANNER BRIEFING ===
 • Thought Summary: {plan.get("thought_summary")}
@@ -4113,17 +4825,44 @@ def handle_ai_chat(payload: dict) -> dict:
         user_api_key=user_api_key,
         preferred_model=preferred_model,
         max_tokens=4096,
-        temperature=0.2,
+        temperature=0.25 if query_kind == "conversational_stock_check" else 0.2,
         timeout_sec=55,
     )
 
     if not raw_reply:
+        llm_note = f"API Key Note: {err_diag}" if (explicit_user_key and err_diag) else ""
+        # For casual single-stock checkups ("what do you think of NVDA?", "why avoid/wait?"), return warm conversational synthesis!
+        if query_kind == "conversational_stock_check":
+            target_sym = (plan.get("target_symbols") or [sym])[0]
+            target_mkt = plan.get("target_market") or market
+            try:
+                intel_obj = fetch_stock_intelligence(target_sym, target_mkt)
+            except Exception:
+                intel_obj = {}
+            fb_md, fb_fups = _build_conversational_stock_check_fallback(
+                question, target_sym, target_mkt, mode, intel_obj, None, client_telemetry
+            )
+            return {
+                "ok": True,
+                "query_kind": query_kind,
+                "model": "Quantamental Advisor",
+                "provider": "StockSage Engine",
+                "plan": None,
+                "rag_trace": [],
+                "ui_commands": plan.get("ui_commands", []),
+                "markdown": fb_md,
+                "follow_ups": fb_fups,
+                "llm_note": llm_note,
+            }
+
         return {
             "ok": False,
+            "query_kind": query_kind,
             "plan": plan,
             "rag_trace": rag_trace,
             "ui_commands": plan.get("ui_commands", []),
-            "error": err_diag or "Gemini Planner/Reasoner not reachable (enable Vertex AI aiplatform.googleapis.com on Cloud Run or add a Gemini API key in ⚙️ Settings).",
+            "llm_note": llm_note,
+            "error": llm_note,
         }
 
     follow_ups = []
@@ -4152,10 +4891,11 @@ def handle_ai_chat(payload: dict) -> dict:
 
     return {
         "ok": True,
+        "query_kind": query_kind,
         "model": used_model,
         "provider": used_provider,
-        "plan": plan,
-        "rag_trace": rag_trace,
+        "plan": None if query_kind == "conversational_stock_check" else plan,
+        "rag_trace": [] if query_kind == "conversational_stock_check" else rag_trace,
         "ui_commands": merged_ui_cmds,
         "markdown": "\n".join(clean_lines).strip(),
         "follow_ups": follow_ups,

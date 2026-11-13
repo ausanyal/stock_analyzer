@@ -1,15 +1,22 @@
 # StockSage Quant Pro — Agentic Planner, RAG & Page-Driver Specification (`SI` + Attached Skills)
 
-## 1. Architecture Overview (Quality-First, Multi-Stage Deliberative Loop)
+## 1. Architecture Overview (Conversational NLP Router + Multi-Stage Deliberative Loop)
 
-Because **reasoning quality and factual rigor take absolute priority over Time-To-First-Token (TTFT)**, the Quant Copilot operates as a **3-Stage Deliberative Agent** (`Planner → Parallel RAG & Tool Executor → Deep Reasoner & UI Page-Driver`):
+The Quant Copilot combines a **Stage 0 Conversational & Conceptual NLP Router** with a **3-Stage Deliberative Agent** (`Stage 0 NLP Router → Stage 1 Planner → Stage 2 Parallel RAG & Tool Executor → Stage 3 Adaptive Deep Reasoner & UI Page-Driver`) so casual chat feels warm and human while quantitative deep-dives preserve full institutional rigor:
+
+- **Stage 0 Conversational & Conceptual NLP Router (`classify_chat_query_kind` & `detect_stock_concept_topic`)**:
+  - `conversational_meta` (*"can i ask u stock related questions"*, *"hello"*, *"thanks"*), `follow_up` (*"give me an example"*, *"simplify that"*, *"tell me more"*), and `conceptual_investing` (**16 equity, valuation, DCF, DCA, Hurst, Monte Carlo, Volume Profile, Kelly, HRP, filings, psychology & ETF topics**): bypasses heavy RAG network calls, suppresses `<details>` tool-trace chrome and unsolicited KPI tables, and replies in warm first-person advisor prose (`80–220 words`) with 1 subtle personalized tie-in to the user's active ticker.
+  - `conversational_stock_check` (*"what do you think of NVDA?"*, *"is AAPL a good buy?"*): retrieves live context + opens with a natural 1–2 sentence human lead-in reconciling `1–8W` Swing vs. `1–3Y` Compounder DCF/DCA.
+  - `quant_deep_dive` (peer comparisons, UI page-driver commands, custom simulations, stress tests, scanners, statement audits): executes the full Stage 1–3 deliberative pipeline + citation trace.
 
 ```mermaid
 flowchart TD
-    User["User Prompt + Active UI State"] --> Stage1["Stage 1: Strategic Planner<br/>(Intent Decomposition, Hypotheses, Tool & RAG Selection)"]
+    User["User Prompt + Active UI State"] --> Stage0["Stage 0: Conversational & Conceptual NLP Router<br/>(conversational_meta | follow_up | conceptual_investing | conversational_stock_check | quant_deep_dive)"]
+    Stage0 -->|"Casual / Follow-Up / 16 Concepts"| FastConv["Adaptive Conversational Strategist<br/>(Warm Prose, 80-220w, Zero Unsolicited KPI Tables)"]
+    Stage0 -->|"Stock Check / Quant Deep Dive"| Stage1["Stage 1: Strategic Planner<br/>(Intent Decomposition, Hypotheses, Tool & RAG Selection)"]
     Stage1 --> Stage2["Stage 2: Parallel RAG & Quantitative Tool Executor<br/>(Server-Side Multi-Ticker Quant, 17-Module Fundamentals, 5Q/4Y Financials, SEC Filings, News)"]
-    Stage2 --> Stage3["Stage 3: Deep Reasoner, Self-Critic & Page Driver<br/>(gemini-2.5-pro / gemini-2.5-flash with Thinking)"]
-    Stage3 --> Output1["📊 Verified Markdown Analysis + Citation Trace"]
+    Stage2 --> Stage3["Stage 3: Adaptive Deep Reasoner, Self-Critic & Page Driver<br/>(Vertex AI /v1 + Gemini Developer API /v1beta)"]
+    Stage3 --> Output1["📊 Conversational Lead-In + Verified Analysis & Citation Trace"]
     Stage3 --> Output2["🎮 Deterministic UI Page-Driver Commands<br/>(Auto-loads Ticker, Switches Tabs, Plots Chart Lines, Runs MC/Scanner)"]
 ```
 

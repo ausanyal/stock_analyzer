@@ -1582,13 +1582,13 @@
     </div>
 
     <div class="chat-input-wrap">
-      <div class="chat-input-row">
-        <textarea id="chatInput" placeholder="Ask why BUY/HOLD, compare tickers, or test custom capital…" rows="1"></textarea>
-        <button class="btn" id="chatSendBtn" style="padding:8px 13px">Send ➤</button>
-      </div>
+      <form class="chat-input-row" id="chatForm">
+        <textarea id="chatInput" name="chat_prompt" placeholder="Ask anything in plain English — 'What is DCF?', 'Thoughts on NVDA?', or compare &amp; drive charts…" rows="1"></textarea>
+        <button type="submit" class="btn" id="chatSendBtn" style="padding:8px 13px">Send ↵</button>
+      </form>
       <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim)">
-        <span>Grounded in live OHLCV, Hurst, Monte Carlo, Backtests &amp; Weekly Alpha</span>
-        <span>Enter ↵ to send</span>
+        <span>Conversational Equity Strategist + 17-Module Quant &amp; DCF Engine</span>
+        <span>Enter ↵ to send · Shift+Enter newline</span>
       </div>
     </div>
   </aside>
@@ -6051,14 +6051,14 @@ function updateChatContextUI(onNewTicker = false) {
   const sig = p?.signal || 'BUY/HOLD';
   const bLbl = benchName();
   const chips = [
+    { lbl: `💬 Honest Take on ${sym}`, q: `What do you honestly think about ${sym} right now across short-term timing vs. long-term value?` },
+    { lbl: `🧭 Swing vs. Long-Term?`, q: `Why can a stock be rated AVOID/WAIT on the 1–8W Swing desk yet be a Long-Term Compounder Buy?` },
     { lbl: `🏛️ 1–3Y DCF & 3-Tranche DCA`, q: `Switch to Long-Term (1–3Y) Compounder mode for ${sym}, open its Long-Term DCF & DCA tab, plot its 3Y Target & DCA Tranches on the chart, and evaluate its ROIC, 2-Stage 10Y DCF, and 3-Tranche accumulation plan.` },
     { lbl: `🎯 Plot Targets & Why ${sig}?`, q: `Plot ${sym}'s Wall Street price targets on the chart and explain why ${sym} is rated ${sig} (${p?.score || '—'}/100) across Technicals vs. Street Fundamentals.` },
     { lbl: `📑 Drive Financials & FCF`, q: `Open ${sym}'s quarterly financials tab and audit its 5-quarter revenue, operating margins, CapEx, and free cash flow conversion.` },
     { lbl: `⚔️ Bull vs. Bear Debate`, q: `Run a head-to-head Bull vs. Bear debate on ${sym} using its technicals, Wall Street price targets, earnings revisions, and cash flow.`, mode: 'debate' },
     { lbl: `🦈 Devil's Advocate Pre-Mortem`, q: `Play Devil's Advocate on ${sym}: what are the biggest hidden risks or traps in its chart, Volume Profile POC, CapEx/Free Cash Flow, or 13F/insider holdings right now?`, mode: 'devil' },
     { lbl: `👶 Explain Setup ELI5`, q: `Explain ${sym}'s current chart setup, Monte Carlo simulation, and fundamental valuation like I'm 5 using simple analogies.`, mode: 'eli5' },
-    { lbl: `🏦 Audit 13F & Insiders`, q: `Open ${sym}'s Holdings tab and audit its top 13F institutional holders, recent Form 4 insider transactions, and short float.` },
-    { lbl: `🎲 Run 1500-Path 90D Jump MC`, q: `Run 1500 Monte Carlo paths over 90 days using jump-diffusion for ${sym} and reason on the P5 Bear Tail and CVaR.` },
     { lbl: `⚔️ ${sym} vs ${peer} (Drive & Compare)`, q: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Fundamentals (P/E, FCF, Analyst Upside), and Monte Carlo win odds.` },
   ];
   const chipsEl = document.getElementById('chatChips');
@@ -6080,10 +6080,10 @@ function updateChatContextUI(onNewTicker = false) {
     if (lastLoadedSym && lastLoadedSym !== sym) {
       appendChatMessage(
         'bot',
-        `<p>🔄 <strong>Switched Active Telemetry Context to ${flag} ${sym} (${f$(last.close)})</strong> — Composite Score <strong>${p.score}/100 (${p.signal})</strong>, Regime <code>H=${S.quant.hurst.toFixed(2)} (${S.quant.regime})</code>, Volume POC <code>${f$(S.computed.vp.poc)}</code>.</p><p>Ask any question below or click a prompt chip to interrogate ${sym}'s setup.</p>`,
+        `<p>🔄 <strong>Switched Active Context to ${flag} ${sym} (${f$(last.close)})</strong> — Score <strong>${p.score}/100 (${p.signal})</strong>, Regime <code>H=${S.quant.hurst.toFixed(2)}</code>, Volume POC <code>${f$(S.computed.vp.poc)}</code>. Ask me anything about ${sym} or any investing concept in plain English!</p>`,
         [
-          { label: `🎯 Why is ${sym} rated ${p.signal}?`, prompt: chips[0].q },
-          { label: `⚔️ Compare ${sym} vs ${peer}`, prompt: chips[6].q },
+          { label: `💬 Honest Take on ${sym}`, prompt: chips[0].q },
+          { label: `⚔️ Compare ${sym} vs ${peer}`, prompt: chips[8].q },
         ],
         `Quant Copilot · Context Switched`
       );
@@ -6102,30 +6102,27 @@ function postWelcomeBriefing() {
   const vp = S.computed.vp;
   const mc = S.mcResult;
   const peer = getDefaultPeer(sym);
+  const flag = S.market === 'IN' ? '🇮🇳' : '🇺🇸';
   msgsEl.dataset.lastSym = sym;
 
   const html = `
-    <h4>🤖 Live Quantitative Briefing: ${sym} (${f$(last.close)})</h4>
-    <p>I am synced with the live multi-factor telemetry for <strong>${S.meta?.longName || sym}</strong> on the <strong>${S.market === 'IN' ? '🇮🇳 NSE India' : '🇺🇸 US'}</strong> desk. Here is your instant snapshot:</p>
-    <table class="chat-kv-table">
-      <tr><th>Pillar</th><th>Live Telemetry</th><th>Institutional Read</th></tr>
-      <tr><td><strong>Verdict</strong></td><td><strong>${p.score}/100 · ${p.signal}</strong></td><td>Conviction: ${p.conviction}</td></tr>
-      <tr><td><strong>Regime (Hurst)</strong></td><td><code>H = ${q.hurst.toFixed(2)}</code></td><td>${q.regime} (Sharpe ${q.sharpe.toFixed(2)})</td></tr>
-      <tr><td><strong>Entry / Stop</strong></td><td><code>${f$(p.entryLow)}–${f$(p.entryHigh)}</code></td><td>Stop <code>${f$(p.stopLoss)}</code> · TP2 <code>${f$(p.tp2)}</code></td></tr>
-      <tr><td><strong>Volume Profile</strong></td><td>POC <code>${f$(vp.poc)}</code></td><td>VA: <code>${f$(vp.val)}</code> – <code>${f$(vp.vah)}</code></td></tr>
-      <tr><td><strong>Monte Carlo (${mc.nDays}d)</strong></td><td><strong>${mc.stats.probUp.toFixed(1)}% Win Odds</strong></td><td>Median <code>${f$(mc.stats.med)}</code> · CVaR <code>${fpct(mc.stats.cvarPct, 1)}</code></td></tr>
-    </table>
-    <p>Ask me <em>why</em> a stock is scored the way it is, test custom position sizes (e.g. <code>"What if I invest ${ccySym()}50,000?"</code>), check if a stock is overvalued/stretched, or compare any two tickers head-to-head.</p>
+    <h4>👋 Hi! I'm your Quant Copilot (${flag} ${sym} · ${f$(last.close)})</h4>
+    <p>Ask me <strong>anything in plain English</strong> — whether it's a general investing or quant concept (<em>"How does a 2-stage DCF work?"</em>, <em>"Should I DCA or invest lump sum?"</em>, <em>"What is the Hurst exponent?"</em>) or a live check on your screen:</p>
+    <ul>
+      <li><strong>Live Pulse on ${S.meta?.longName || sym}:</strong> Active Score <strong>${p.score}/100 (${p.signal})</strong> · Regime <code>H = ${q.hurst.toFixed(2)}</code> (${q.regime.split(' ')[0]}) · Volume POC <code>${f$(vp.poc)}</code> · ${mc.nDays}d Win Odds <strong>${mc.stats.probUp.toFixed(1)}%</strong>.</li>
+      <li><strong>Chat, Compare &amp; Drive the Desk:</strong> Ask for a candid take on <strong>${sym}</strong>, compare <strong>${sym} vs ${peer}</strong>, size a custom budget, or tell me to switch horizons and plot DCF/DCA levels directly on your chart.</li>
+    </ul>
   `;
   appendChatMessage(
     'bot',
     html,
     [
-      { label: `🎯 Why ${p.signal}?`, prompt: `Why is ${sym} rated ${p.signal} (${p.score}/100)? Break down the bull catalysts, bear risks, and factor weights.` },
-      { label: `⚖️ Valuation & Stretch Check`, prompt: `Is ${sym} overvalued or overextended in the short term? Check its P/E ratio, RSI(14), and ATR stretch vs EMA20.` },
-      { label: `⚔️ Compare ${sym} vs ${peer}`, prompt: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Hurst, Valuation (P/E), and Monte Carlo win odds.` },
+      { label: `💬 Honest Take on ${sym}`, prompt: `What do you honestly think about ${sym} right now across short-term timing vs. long-term value?` },
+      { label: `🧭 Swing vs. Long-Term Explained`, prompt: `Why can a stock be rated AVOID/WAIT on the 1–8W Swing desk yet be a Long-Term Compounder Buy?` },
+      { label: `🏛️ 1–3Y DCF & DCA Plan`, prompt: `Switch to Long-Term (1–3Y) Compounder mode for ${sym}, open its Long-Term DCF & DCA tab, and evaluate its 2-Stage DCF and 3-Tranche DCA plan.` },
+      { label: `⚔️ Compare ${sym} vs ${peer}`, prompt: `Compare ${sym} vs ${peer} head-to-head across Quant Score, Sharpe, Valuation (P/E), and Monte Carlo win odds.` },
     ],
-    `Quant Copilot · Live Telemetry Ready`
+    `💬 Conversational Strategist + Quant Engine`
   );
 }
 
@@ -6812,6 +6809,97 @@ ${chatTranscript || '_No interactive Q&A session recorded prior to export._'}
   );
 }
 
+function classifyClientQueryKind(question) {
+  const qClean = (question || '').replace(/\s+/g, ' ').trim();
+  const qLow = qClean.toLowerCase();
+  const allTickers = extractMentionedTickers(qClean, true);
+  const hardQuantRx = /\b(compare|vs\.?|versus|head-to-head|stress\s*test|multi-?timeframe|confluence\s+matrix|plot|draw|mark\s+on\s+chart|re-simulate|run\s+\d+|open\s+.*?\btab\b|switch\s+(?:to|desk|market|horizon)|load\s+[a-z]{1,10}|set\s+(?:my\s+)?(?:capital|account|portfolio)|scan|scanner|screener|which\s+stocks|top\s+compounders|build\s+(?:a|an|my)\s+(?:portfolio|basket)|audit\s+|factor\s+weights|5-quarter)\b/i;
+
+  if (allTickers.length >= 2) return 'quant_deep_dive';
+  if (hardQuantRx.test(qLow) && !(allTickers.length === 0 && /((?:swing|short[\s-]*term).*?long[\s-]*term|\bdca\s+(?:vs|or)|\betfs?\s+(?:vs|or)|\bequal-weight\s+vs)/i.test(qLow))) {
+    return 'quant_deep_dive';
+  }
+  if (qClean.length <= 70 && !/\b(what|how|why|should|can|compare|explain|is|are)\b|\?/i.test(qLow) && /\b(thanks|thank\s+you|thx|ty|got\s+it|makes\s+sense|awesome|perfect|great|appreciate\s+it|understood)\b/i.test(qLow)) {
+    return 'conversational_thanks';
+  }
+  if ((qClean.length <= 50 && /^(hi|hello|hey|yo|howdy|namaste|good\s+(?:morning|afternoon|evening)|hi\s+there|hey\s+there|hello\s+there)[!.,?\s]*$/i.test(qLow)) ||
+      /\b(can\s+i\s+ask\s+(?:u|you)|may\s+i\s+ask\s+(?:u|you)|can\s+we\s+(?:chat|talk)|are\s+(?:u|you)\s+conversational|what\s+can\s+(?:u|you)\s+(?:do|help|answer)|what\s+can\s+i\s+ask|who\s+are\s+(?:u|you)|how\s+do\s+i\s+use\s+this|help\s+me\s+get\s+started)\b/i.test(qLow)) {
+    return 'conversational_meta';
+  }
+  if (S.chatHistory.length > 0 && allTickers.length === 0 && qClean.length <= 90 && (
+    /^(yes|yeah|yep|sure|ok|okay|please|go\s+ahead|tell\s+me\s+more|elaborate|go\s+deeper|why|how\s+so|what\s+does\s+that\s+mean)[!.,?\s]*$/i.test(qLow) ||
+    /\b(give\s+me\s+(?:a|an)\s+(?:simple\s+)?example|for\s+example|simplify|in\s+simple\s+(?:words|terms)|in\s+plain\s+english|explain\s+like\s+i'?m\s+5|eli5|tl;?dr|summarize\s+that)\b/i.test(qLow)
+  )) {
+    return 'follow_up';
+  }
+  if (allTickers.length === 0 && /\b(what\s+is|what'?s|what\s+are|how\s+does|explain|difference\s+between|dcf|wacc|dca|lump\s+sum|hurst|monte\s+carlo|merton|cvar|volume\s+profile|\bpoc\b|rsi|macd|squeeze|kama|kelly|sharpe|sortino|hrp|risk\s+parity|pead|after-hours|13f|insider|fomo|ltcg|stcg|etfs?|interest\s+rates?|swing\s+vs)\b/i.test(qLow)) {
+    return 'conceptual_investing';
+  }
+  return 'conversational_stock_check';
+}
+
+function buildClientConversationalReply(question, qKind, sym, price, p, q, vp) {
+  const peer = getDefaultPeer(sym);
+  const qLow = (question || '').toLowerCase();
+  if (qKind === 'conversational_thanks') {
+    return {
+      html: `<p>You're very welcome! Glad that helped. Whenever you're ready, ask me any other stock or investing question in plain English, or we can take a fresh look at <strong>${sym}</strong> (<code>${f$(price)}</code>).</p>`,
+      actions: [
+        { label: `💬 Honest Take on ${sym}`, prompt: `What do you honestly think about ${sym} right now?` },
+        { label: `⚔️ Compare ${sym} vs ${peer}`, prompt: `Compare ${sym} vs ${peer} head-to-head` },
+      ]
+    };
+  }
+  if (qKind === 'conversational_meta') {
+    return {
+      html: `
+        <p>Yes, of course! You can chat with me naturally just like a human portfolio strategist — no rigid commands needed.</p>
+        <ul>
+          <li><strong>Investing &amp; Quant Concepts:</strong> Ask me <em>"How does a 2-stage DCF work?"</em>, <em>"Should I DCA or invest lump sum?"</em>, <em>"What is the Hurst exponent or Volume Profile POC?"</em>, or <em>"Why can a stock be AVOID short-term yet a Long-Term Buy?"</em></li>
+          <li><strong>Candid Stock Checkups:</strong> Ask <em>"What do you think of ${sym}?"</em>, <em>"Is ${peer} too expensive?"</em>, or <em>"Should I worry about after-hours moves?"</em></li>
+          <li><strong>Hands-Free Chart &amp; Page Control:</strong> Tell me to switch between Swing and Long-Term modes, plot DCF/DCA levels, or compare tickers head-to-head.</li>
+        </ul>
+        <p>I'm synced with <strong>${sym}</strong> (<code>${f$(price)}</code> · <strong>${p.score}/100 ${p.signal}</strong>) whenever you want to bring live numbers in. What would you like to explore?</p>
+      `,
+      actions: [
+        { label: `💬 Honest Take on ${sym}`, prompt: `What do you honestly think about ${sym} right now?` },
+        { label: `🧭 Swing vs. Long-Term Explained`, prompt: `Why can a stock be AVOID short-term yet a Long-Term Buy?` },
+        { label: `🏛️ How Does 2-Stage DCF Work?`, prompt: `How does a 2-Stage 10Y DCF valuation work?` },
+      ]
+    };
+  }
+  if (qKind === 'follow_up') {
+    return {
+      html: `
+        <p>Here's a simple, concrete way to picture it using <strong>${sym}</strong> (<code>${f$(price)}</code>):</p>
+        <p>A <strong>1–8 week swing trader</strong> watches the <em>weather radar</em> — if price sits below its 20-day trend or below heavy Volume POC supply (<code>${f$(vp.poc)}</code>), they wait patiently for momentum to turn back up before risking 1% of capital. A <strong>1–3 year compounder investor</strong> checks the <em>business appraisal</em> (ROIC, Free Cash Flow, and 2-Stage DCF) and scales in calmly across <strong>3 DCA tranches (40% / 35% / 25%)</strong> so short-term volatility works in their favor instead of shaking them out.</p>
+      `,
+      actions: [
+        { label: `🏛️ Open ${sym}'s Long-Term DCF & DCA`, onClick: () => jumpToIntelTab('longterm') },
+        { label: `⚔️ Compare ${sym} vs ${peer}`, prompt: `Compare ${sym} vs ${peer} head-to-head` },
+      ]
+    };
+  }
+  if (qKind === 'conceptual_investing') {
+    let body = `<p>In plain terms: <strong>short-term price is driven by liquidity, positioning, and regime</strong> (which we track via Hurst <code>H = ${q.hurst.toFixed(2)}</code> and Volume POC <code>${f$(vp.poc)}</code>), whereas <strong>multi-year wealth is driven by ROIC, Free Cash Flow growth, and Margin of Safety vs. 2-Stage DCF</strong>.</p><p>Combining both lenses keeps you from chasing euphoric tops short-term while giving you the conviction to accumulate great businesses in <strong>3 DCA tranches (40% / 35% / 25%)</strong> during pullbacks.</p>`;
+    if (/\bdcf|wacc|intrinsic\b/.test(qLow)) {
+      body = `<p>A <strong>2-Stage 10-Year DCF</strong> values a stock like a cash-producing business rather than a ticker symbol: Stage 1 discounts Years 1–5 Free Cash Flow growth back at <strong>WACC</strong> (cost of capital), and Stage 2 fades growth smoothly toward long-run GDP to compute terminal value plus net cash per share. Comparing that intrinsic value against spot price gives your <strong>Margin of Safety</strong>.</p>`;
+    } else if (/\bdca|lump\s*sum|tranche\b/.test(qLow)) {
+      body = `<p>While lump-sum wins slightly more often in calm uptrends, <strong>level-based 3-Tranche DCA (40% / 35% / 25%)</strong> protects you when buying pullbacks in volatile stocks: 40% gets you invested today, 35% waits near the 50-week average / Value Area Low, and 25% stays dry for deep macro flushes near the 200-week floor.</p>`;
+    } else if (/\bhurst\b/.test(qLow)) {
+      body = `<p>The <strong>Hurst Exponent (H)</strong> measures market memory: <code>H &gt; 0.55</code> means moves tend to trend and follow through, <code>H &lt; 0.45</code> means moves tend to snap back like a rubber band (mean-reversion), and <code>H ≈ 0.50</code> is random noise. On <strong>${sym}</strong> right now, <code>H = ${q.hurst.toFixed(2)}</code> (${q.regime}).</p>`;
+    }
+    return {
+      html: body,
+      actions: [
+        { label: `💬 Apply This to ${sym}`, prompt: `What do you honestly think about ${sym} right now?` },
+        { label: `🏛️ View ${sym} 2-Stage DCF & DCA`, onClick: () => jumpToIntelTab('longterm') },
+      ]
+    };
+  }
+  return null;
+}
+
 async function buildQuantReasoningReply(question) {
   const qLower = question.toLowerCase();
   const sym = S.ticker || 'NVDA';
@@ -6825,6 +6913,13 @@ async function buildQuantReasoningReply(question) {
   const bestBt = [...bts.filter(b => !b.isBenchmark)].sort((a, b) => b.sharpe - a.sharpe)[0] || bts[0];
   const bLbl = benchName();
   const acct = parseFloat(document.getElementById('acctSize').value) || (S.market === 'IN' ? 500000 : 25000);
+
+  // 00. Check Conversational Greetings, Capability Questions, Multi-Turn Follow-Ups & Investing Concepts
+  const clientQKind = classifyClientQueryKind(question);
+  if (clientQKind === 'conversational_thanks' || clientQKind === 'conversational_meta' || clientQKind === 'follow_up' || clientQKind === 'conceptual_investing') {
+    const convReply = buildClientConversationalReply(question, clientQKind, sym, price, p, q, vp);
+    if (convReply) return convReply;
+  }
 
   const lrsi = [...(S.computed.rv || [])].reverse().find(v => v != null) ?? 50;
   const le20 = [...(S.computed.e20 || [])].reverse().find(v => v != null) ?? price;
@@ -7242,10 +7337,14 @@ async function buildQuantReasoningReply(question) {
   const catsHtml = (p.catalysts || []).slice(0, 4).map(c => `<li>✅ ${c}</li>`).join('');
   const risksHtml = (p.risks || []).slice(0, 3).map(r => `<li>⚠️ ${r}</li>`).join('');
   const peer = getDefaultPeer(sym);
+  const leadTone = p.score >= 60
+    ? `Looking at <strong>${S.meta?.longName || sym} (${f$(price)})</strong> right now, the multi-factor picture leans constructive — scoring <strong>${p.score}/100 (${p.signal})</strong>.`
+    : p.score <= 42
+      ? `Looking at <strong>${S.meta?.longName || sym} (${f$(price)})</strong> right now, short-term momentum calls for patience (<strong>${p.score}/100 · ${p.signal}</strong>), even if the longer-term business story remains intact.`
+      : `Here's where <strong>${S.meta?.longName || sym} (${f$(price)})</strong> stands right now — a balanced <strong>${p.score}/100 (${p.signal})</strong> setup where level discipline matters most.`;
   return {
     html: `
-      <h4>🎯 Multi-Factor Reasoning Breakdown: Why ${sym} is Rated ${p.signal} (${p.score}/100)</h4>
-      <p><strong>${S.meta?.longName || sym} (${f$(price)})</strong> earns a Composite Quant Score of <strong>${p.score}/100 (${p.signal} · ${p.conviction} Conviction)</strong> across our 5 institutional pillars:</p>
+      <p>${leadTone} Here is how the 5 core pillars stack up:</p>
       <table class="chat-kv-table">
         <tr><th>Factor Pillar</th><th>Live Reading</th><th>Signal Contribution</th></tr>
         <tr><td><strong>1. Trend &amp; Moving Averages</strong></td><td>EMA20 ${f$(le20)} / EMA50 ${f$(le50)} / SMA200 ${f$(ls200)}</td><td>${price > le20 && le20 > le50 ? '🟢 Bullish Alignment' : price < le20 && le20 < le50 ? '🔴 Bearish Alignment' : '🟡 Mixed / Transition'}</td></tr>
@@ -7474,16 +7573,18 @@ async function executePageDriverCommands(uiCommands) {
 }
 
 function renderPlannerTraceHtml(plan, ragTrace, executedSteps) {
-  if (!plan) return '';
-  const hyps = (plan.hypotheses || []).map(h => `<li style="margin-bottom:3px">${h}</li>`).join('');
-  const skills = (plan.skills_invoked || []).map(s => `<span class="badge b-purple" style="font-size:9.5px">${s}</span>`).join(' ');
-  const ragItems = (ragTrace || []).map(r => `<li style="margin-bottom:2px"><strong>${r.symbol} · ${r.corpus}:</strong> <span style="color:var(--muted)">${r.summary}</span></li>`).join('');
   const uiBanner = (executedSteps && executedSteps.length)
     ? `<div style="background:rgba(56,189,248,.11);border:1px solid rgba(56,189,248,.32);border-radius:6px;padding:6px 9px;margin-bottom:8px;font-size:11px">
          <div style="font-weight:800;color:var(--accent);margin-bottom:3px">🧭 Page-Driver UI Actions Executed Automatically:</div>
          <div style="display:flex;flex-wrap:wrap;gap:5px">${executedSteps.map(s => `<span class="badge b-blue" style="font-size:10px">${s}</span>`).join('')}</div>
        </div>`
     : '';
+  if (!plan || !Array.isArray(ragTrace) || ragTrace.length === 0) {
+    return uiBanner;
+  }
+  const hyps = (plan.hypotheses || []).map(h => `<li style="margin-bottom:3px">${h}</li>`).join('');
+  const skills = (plan.skills_invoked || []).map(s => `<span class="badge b-purple" style="font-size:9.5px">${s}</span>`).join(' ');
+  const ragItems = (ragTrace || []).map(r => `<li style="margin-bottom:2px"><strong>${r.symbol} · ${r.corpus}:</strong> <span style="color:var(--muted)">${r.summary}</span></li>`).join('');
 
   return `
     ${uiBanner}
@@ -7509,7 +7610,7 @@ async function callGeminiChatWithTelemetry(question) {
   const telemetry = buildLiveDossierForLLM();
   let serverFallbackTrace = '';
 
-  // 1. Primary: Call Server-Side 3-Stage Deliberative Planner -> Parallel RAG & Tool Executor -> Deep Reasoner (/api/chat)
+  // 1. Primary: Call Server-Side Stage 0 Conversational Router + Stage 1–3 Planner & RAG (/api/chat)
   try {
     const r = await fetch(`${apiBase}/api/chat`, {
       method: 'POST',
@@ -7530,26 +7631,40 @@ async function callGeminiChatWithTelemetry(question) {
       const d = await r.json();
       const executedSteps = await executePageDriverCommands(d?.ui_commands || []);
       const traceHtml = renderPlannerTraceHtml(d?.plan, d?.rag_trace, executedSteps);
+      const noteHtml = d?.llm_note
+        ? `<div style="font-size:10.5px;color:var(--yellow);margin-top:6px">ℹ️ <em>${d.llm_note}</em></div>`
+        : '';
       if (d && d.ok && d.markdown) {
+        const badgePrefix = d.provider === 'StockSage Engine'
+          ? `💬 ${d.model || 'Conversational Advisor'}`
+          : `🧠 ${d.model || 'gemini-2.5-pro'} (${d.provider || 'Planner+RAG'})`;
         return {
-          html: traceHtml + renderSimpleMarkdown(d.markdown),
+          html: traceHtml + renderSimpleMarkdown(d.markdown) + noteHtml,
           followUps: d.follow_ups || [],
-          modelLabel: `🧠 ${d.model || 'gemini-2.5-pro'} (${d.provider || 'Planner+RAG'})`,
+          modelLabel: badgePrefix,
           executedSteps,
+          queryKind: d.query_kind || '',
         };
       }
-      if (traceHtml || d?.error) {
-        serverFallbackTrace = `${traceHtml}${d?.error ? `<div style="font-size:10.5px;color:var(--yellow);margin-bottom:6px">ℹ️ <em>LLM Note: ${d.error} Showing deterministic multi-factor synthesis below:</em></div>` : ''}`;
+      if (traceHtml || noteHtml) {
+        serverFallbackTrace = `${traceHtml}${noteHtml}`;
       }
     }
   } catch {}
 
   // 2. Fallback: Direct Browser Call if User Provided an API Key in Settings
   if (!key) return serverFallbackTrace ? { fallbackPrefixHtml: serverFallbackTrace } : null;
+  const clientQKind = classifyClientQueryKind(question);
+  const isLightConv = clientQKind !== 'quant_deep_dive' && clientQKind !== 'conversational_stock_check';
   const historyText = S.chatHistory.slice(-6).map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
-  const fullPrompt = `You are the StockSage Quant Pro Deliberative Planner & Reasoner (${S.chatPersona || 'analyst'} mode). Answer using the live telemetry below and end with FOLLOW_UPS: Q1? | Q2? | Q3?\n\n${telemetry}\n\nRECENT CONVERSATION:\n${historyText}\n\nUSER QUESTION: ${question}`;
+  const styleRule = isLightConv
+    ? `Reply in warm, natural first-person prose (80–200 words) with ZERO unsolicited Markdown KPI tables and ZERO H1/H2/H3 headers.`
+    : `Open with a natural 1–2 sentence conversational takeaway before citing crisp live numbers from telemetry.`;
+  const fullPrompt = `You are Quant Copilot, the conversational equity & quantitative strategist inside StockSage Quant Pro (${S.chatPersona || 'analyst'} mode). ${styleRule} End with FOLLOW_UPS: Q1? | Q2? | Q3?\n\n${telemetry}\n\nRECENT CONVERSATION:\n${historyText}\n\nUSER QUESTION: ${question}`;
 
-  const modelsToTry = [S.gemModel || 'gemini-2.5-pro', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  const modelsToTry = isLightConv
+    ? ['gemini-2.5-flash', S.gemModel || 'gemini-2.5-pro', 'gemini-2.0-flash']
+    : [S.gemModel || 'gemini-2.5-pro', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'];
   for (const m of [...new Set(modelsToTry)]) {
     try {
       const resp = await fetch(
@@ -7558,8 +7673,8 @@ async function callGeminiChatWithTelemetry(question) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: fullPrompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 4096 },
+            contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+            generationConfig: { temperature: isLightConv ? 0.35 : 0.2, maxOutputTokens: isLightConv ? 1400 : 4096 },
           }),
         }
       );
@@ -7580,6 +7695,7 @@ async function callGeminiChatWithTelemetry(question) {
           html: renderSimpleMarkdown(cleanLines.join('\n').trim()),
           followUps,
           modelLabel: `🧠 ${m}`,
+          queryKind: clientQKind,
         };
       }
     } catch {}
@@ -7600,19 +7716,23 @@ async function sendChatMessage(customPrompt) {
   const personaNames = { analyst: '🧠 Deep Planner', eli5: '👶 ELI5', debate: '⚔️ Bull vs. Bear', devil: '🦈 Devil\'s Advocate' };
   const pBadge = personaNames[S.chatPersona] || '🧠 Deep Planner';
   appendChatMessage('user', `<p>${question.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`, [], `You · ${pBadge}`);
+  const preKind = classifyClientQueryKind(question);
   S.chatHistory.push({ role: 'user', text: question });
 
+  const isDeepPipeline = preKind === 'quant_deep_dive';
   const thinkingNode = appendChatMessage(
     'bot',
-    `<p style="color:var(--muted)">⏳ <em>Stage 1 Planner → Stage 2 Parallel 17-Module RAG &amp; Quant Tool Retrieval → Stage 3 Deep Reasoner (${pBadge}) is analyzing ${S.ticker} &amp; driving your page…</em></p>`,
+    isDeepPipeline
+      ? `<p style="color:var(--muted)">⏳ <em>Stage 1 Planner → Stage 2 Parallel 17-Module RAG &amp; Quant Tool Retrieval → Stage 3 Deep Reasoner (${pBadge}) is analyzing ${S.ticker} &amp; driving your page…</em></p>`
+      : `<p style="color:var(--muted)">💬 <em>Thinking…</em></p>`,
     [],
-    'Quant Copilot · Deliberative Planner Running…'
+    isDeepPipeline ? 'Quant Copilot · Deliberative Planner Running…' : 'Quant Copilot · Conversational Strategist…'
   );
 
   try {
-    const isInteractiveTool = /\b(compare|vs\.?|versus|head-to-head|run\s+\d+|simulate|re-simulate|plot|draw|multi-?timeframe|1h|stress\s*test|shock|drops?\s+-?\d+|falls?\s+-?\d+|screen|screener|build.*portfolio|build.*basket)\b/i.test(question);
+    const isInteractiveTool = preKind === 'quant_deep_dive' && /\b(compare|vs\.?|versus|head-to-head|run\s+\d+|simulate|re-simulate|plot|draw|multi-?timeframe|1h|stress\s*test|shock|drops?\s+-?\d+|falls?\s+-?\d+|screen|screener|build.*portfolio|build.*basket)\b/i.test(question);
 
-    // Run 3-Stage Deliberative Planner + RAG + Deep Reasoner AND deterministic quantitative tool tables in parallel
+    // Run Server Conversational/Planner pipeline AND lightweight client fallback in parallel
     const [aiRes, det] = await Promise.all([
       callGeminiChatWithTelemetry(question),
       buildQuantReasoningReply(question),
@@ -7636,11 +7756,14 @@ async function sendChatMessage(customPrompt) {
       }
       finalMeta = `Quant Copilot · ${aiRes.modelLabel} · ${pBadge}`;
       const followUpActions = (aiRes.followUps || []).map(fq => ({ label: `💬 ${fq}`, prompt: fq }));
-      finalActions = [...followUpActions, ...(det?.actions || []).slice(0, 2)];
+      const extraDetActions = (preKind === 'quant_deep_dive' || preKind === 'conversational_stock_check')
+        ? (det?.actions || []).filter(a => a.onClick || a.loadTicker || a.scrollPanel).slice(0, 2)
+        : [];
+      finalActions = [...followUpActions, ...extraDetActions];
     } else {
       finalHtml = (aiRes?.fallbackPrefixHtml || '') + det.html;
       finalActions = det.actions || [];
-      finalMeta = `Quant Copilot · ⚡ Multi-Factor Reasoning Engine`;
+      finalMeta = `Quant Copilot · 💬 Quantamental Strategist`;
     }
 
     if (thinkingNode) thinkingNode.remove();
@@ -7818,11 +7941,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('modalRf').value = S.rfRate;
     document.getElementById('settingsModal').classList.remove('hidden');
   });
-  document.getElementById('chatSendBtn').addEventListener('click', () => sendChatMessage());
+  const chatFormEl = document.getElementById('chatForm');
+  chatFormEl.addEventListener('submit', e => {
+    e.preventDefault();
+    sendChatMessage();
+  });
   document.getElementById('chatInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
-      sendChatMessage();
+      chatFormEl.requestSubmit();
     } else if (e.key === 'Escape') {
       toggleChatDrawer(false);
     }
