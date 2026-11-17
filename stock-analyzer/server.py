@@ -3481,14 +3481,19 @@ def _call_gemini_llm(
         if m and m not in models_order:
             models_order.append(m)
 
-    gen_body = {
-        "contents": [{"role": "user", "parts": [{"text": prompt_text}]}],
-        "generationConfig": {
+    def _make_body_bytes(model_name: str) -> bytes:
+        m_low = (model_name or "").lower().strip()
+        gen_cfg = {
             "temperature": temperature,
             "maxOutputTokens": max_tokens,
-        },
-    }
-    body_bytes = json.dumps(gen_body).encode("utf-8")
+        }
+        if m_low.startswith("gemini-2.5"):
+            budget = 1024 if "pro" in m_low else (384 if max_tokens <= 2000 else 768)
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": budget}
+        return json.dumps({
+            "contents": [{"role": "user", "parts": [{"text": prompt_text}]}],
+            "generationConfig": gen_cfg,
+        }).encode("utf-8")
 
     def _extract_candidate_text(resp_d: dict) -> str:
         parts = (((resp_d.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
@@ -3503,6 +3508,7 @@ def _call_gemini_llm(
     if user_api_key:
         for m in models_order:
             try:
+                body_bytes = _make_body_bytes(m)
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(m)}:generateContent?key={urllib.parse.quote(user_api_key)}"
                 req = urllib.request.Request(url, data=body_bytes, headers={"Content-Type": "application/json"}, method="POST")
                 with urllib.request.urlopen(req, timeout=timeout_sec) as r:
@@ -3529,6 +3535,7 @@ def _call_gemini_llm(
             host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
             for m in models_order:
                 try:
+                    body_bytes = _make_body_bytes(m)
                     url = (
                         f"https://{host}/v1/projects/{urllib.parse.quote(gcp_proj)}"
                         f"/locations/{loc}/publishers/google/models/{urllib.parse.quote(m)}:generateContent"
@@ -4855,14 +4862,55 @@ def handle_ai_chat(payload: dict) -> dict:
                 "llm_note": llm_note,
             }
 
+        # Deep-dive multi-ticker, DCF, scanner, or stress-test synthesis using retrieved server RAG & quant evidence!
+        target_syms = plan.get("target_symbols") or [sym]
+        target_mkt = plan.get("target_market") or market
+        primary_sym = target_syms[0]
+        try:
+            intel_obj = fetch_stock_intelligence(primary_sym, target_mkt)
+        except Exception:
+            intel_obj = {}
+        base_md, base_fups = _build_conversational_stock_check_fallback(
+            question, primary_sym, target_mkt, mode, intel_obj, None, client_telemetry
+        )
+        extra_sections = []
+        if len(target_syms) >= 2:
+            peer_lines = []
+            for p_sym in target_syms[:3]:
+                p_mkt = "IN" if p_sym in INDIA_COMPANY_SLUGS or target_mkt == "IN" else "US"
+                try:
+                    p_intel = fetch_stock_intelligence(p_sym, p_mkt)
+                    p_ov = p_intel.get("overview") or {}
+                    p_lt = p_intel.get("long_term") or {}
+                    p_dcf = (p_lt.get("dcf") or {}).get("intrinsic_fair_value")
+                    p_ccy = p_intel.get("currency") or ("₹" if p_mkt == "IN" else "$")
+                    peer_lines.append(
+                        f"- **`{p_sym}`**: Spot `{p_ccy}{p_ov.get('regular_price')}` · 1–3Y Compounder **`{p_lt.get('score', '—')}/100` ({p_lt.get('verdict', 'HOLD')})**"
+                        + (f" · Base DCF `{p_ccy}{p_dcf}`" if p_dcf else "")
+                    )
+                except Exception:
+                    pass
+            if peer_lines:
+                extra_sections.append("### ⚖️ Multi-Ticker Quantamental Comparison\n" + "\n".join(peer_lines))
+        if quant_blocks:
+            cleaned_q = [qb.split("] ", 1)[-1][:260] for qb in quant_blocks[:2]]
+            extra_sections.append("### 📊 Executed Server Quantitative Factor Evidence\n" + "\n".join(f"- {cq}" for cq in cleaned_q))
+        if mode == "debate":
+            base_md = "### 🟢 The Bull Case vs. 🔴 The Bear Case\n\n" + base_md
+        elif mode == "devil":
+            base_md = "### 🦈 Chief Risk Officer Pre-Mortem Audit\n\n" + base_md
+        full_fb_md = "\n\n".join([base_md] + extra_sections).strip()
         return {
-            "ok": False,
+            "ok": True,
             "query_kind": query_kind,
+            "model": "Quantamental Deep Engine",
+            "provider": "StockSage Engine",
             "plan": plan,
             "rag_trace": rag_trace,
             "ui_commands": plan.get("ui_commands", []),
+            "markdown": full_fb_md,
+            "follow_ups": base_fups,
             "llm_note": llm_note,
-            "error": llm_note,
         }
 
     follow_ups = []
